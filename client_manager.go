@@ -60,7 +60,7 @@ func NewClientManager(config Config, bloomFilter BloomFilter) *ClientManager {
 	return cm
 }
 
-func (cm ClientManager) GetClientIds() []string {
+func (cm *ClientManager) GetClientIds() []string {
 	keys := make([]string, 0, len(cm.clients))
 	for k := range cm.clients {
 		keys = append(keys, k)
@@ -68,12 +68,12 @@ func (cm ClientManager) GetClientIds() []string {
 	return keys
 }
 
-func (cm ClientManager) IsLocalActiveClient(clientId string) bool {
+func (cm *ClientManager) IsLocalActiveClient(clientId string) bool {
 	_, ok := cm.clients[clientId]
 	return ok
 }
 
-func (cm ClientManager) IsActiveClient(clientId string) (bool, error) {
+func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 	if _, ok := cm.clients[clientId]; ok {
 		//do something here
 		return true, nil
@@ -81,7 +81,7 @@ func (cm ClientManager) IsActiveClient(clientId string) (bool, error) {
 	return cm.bloomFilter.Exists(bloomFilterKey, clientId)
 }
 
-func (cm ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
+func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
 	if _, found := cm.clients[clientId]; !found {
 		log.Errorw("Client already existed", "clientId", clientId)
 		return ClientIdDuplicated
@@ -96,7 +96,7 @@ func (cm ClientManager) Connect(clientId string, wsConn WebSocketConnection) err
 	return nil
 }
 
-func (cm ClientManager) Disconnect(clientId string) error {
+func (cm *ClientManager) Disconnect(clientId string) error {
 	log.Debugw("Disconnecting client ...", "clientId", clientId)
 	client, found := cm.clients[clientId]
 	if !found {
@@ -113,7 +113,7 @@ func (cm ClientManager) Disconnect(clientId string) error {
 	return err
 }
 
-func (cm ClientManager) SendMessage(clientId string, message interface{}) error {
+func (cm *ClientManager) SendMessage(clientId string, message interface{}) error {
 	log.Debugw("Sending message", "clientId", clientId, "message", message)
 	client, found := cm.clients[clientId]
 	if !found {
@@ -143,7 +143,7 @@ func (cm ClientManager) SendMessage(clientId string, message interface{}) error 
 	return err
 }
 
-func (cm ClientManager) Broadcast(message interface{}) error {
+func (cm *ClientManager) Broadcast(message interface{}) error {
 	var err error
 	for clientId := range cm.clients {
 		err = cm.SendMessage(clientId, message)
@@ -154,7 +154,7 @@ func (cm ClientManager) Broadcast(message interface{}) error {
 	return nil
 }
 
-func (cm ClientManager) ReceiveMessage(clientId string) (*WSClientMessage, error) {
+func (cm *ClientManager) ReceiveMessage(clientId string) (*WSClientMessage, error) {
 	client, found := cm.clients[clientId]
 	if !found {
 		return nil, ClientNotFoundError
@@ -169,7 +169,7 @@ func (cm ClientManager) ReceiveMessage(clientId string) (*WSClientMessage, error
 	return &message, err
 }
 
-func (cm ClientManager) OnMessage(msgType string, handler MessageHandler) {
+func (cm *ClientManager) OnMessage(msgType string, handler MessageHandler) {
 	handlers, found := cm.messageHandlers[msgType]
 	if !found {
 		handlers = make([]MessageHandler, 8)
@@ -178,7 +178,7 @@ func (cm ClientManager) OnMessage(msgType string, handler MessageHandler) {
 	cm.messageHandlers[msgType] = handlers
 }
 
-func (cm ClientManager) handleMessage(clientId string, message *WSClientMessage) {
+func (cm *ClientManager) handleMessage(clientId string, message *WSClientMessage) {
 	log.Debugw("Message received", "clientId", clientId, "message", message)
 	handlers, found := cm.messageHandlers[message.Type]
 	if !found {
