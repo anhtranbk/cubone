@@ -47,7 +47,7 @@ func NewOnsiteServiceFromConfig(config Config) *onsiteService {
 	}
 }
 
-func (s onsiteService) ConnectClient(clientId string, websocket WebSocketConnection) error {
+func (s *onsiteService) ConnectClient(clientId string, websocket WebSocketConnection) error {
 	err := s.clientManager.Connect(clientId, websocket)
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func (s onsiteService) ConnectClient(clientId string, websocket WebSocketConnect
 	return err
 }
 
-func (s onsiteService) DisconnectClient(clientId string) error {
+func (s *onsiteService) DisconnectClient(clientId string) error {
 	err := s.clientManager.Disconnect(clientId)
 	if err != nil {
 		log.Errorw("Could not disconnect to client", "clientId", clientId)
@@ -72,11 +72,11 @@ func (s onsiteService) DisconnectClient(clientId string) error {
 	return err
 }
 
-func (s onsiteService) ReceivedWSMessage(clientId string) error {
+func (s *onsiteService) ReceivedWSMessage(clientId string) error {
 	panic("implement me")
 }
 
-func (s onsiteService) HandlePubSubMessages() error {
+func (s *onsiteService) HandlePubSubMessages() error {
 	message, err := s.subscriber.GetMessage(100)
 	if err != nil {
 		return err
@@ -92,19 +92,19 @@ func (s onsiteService) HandlePubSubMessages() error {
 	return nil
 }
 
-func (s onsiteService) PublishMessage(message *DeliveryMessage) error {
+func (s *onsiteService) PublishMessage(message *DeliveryMessage) error {
 	return s.publisher.Publish(OnsiteChannel, message)
 }
 
-func (s onsiteService) IsMembership(clientId string) (bool, error) {
+func (s *onsiteService) IsMembership(clientId string) (bool, error) {
 	return s.clientManager.IsActiveClient(clientId)
 }
 
-func (s onsiteService) GetTotalActiveClients() error {
+func (s *onsiteService) GetTotalActiveClients() error {
 	panic("implement me")
 }
 
-func (s onsiteService) handlePubSubMessage(message *PubSubMessage) {
+func (s *onsiteService) handlePubSubMessage(message *PubSubMessage) {
 	if message.Channel == OnsiteChannel {
 		s.onDeliveryMessage(NewDeliveryMessage(message))
 	} else if message.Channel == MembershipChannel {
@@ -114,7 +114,7 @@ func (s onsiteService) handlePubSubMessage(message *PubSubMessage) {
 	}
 }
 
-func (s onsiteService) onDeliveryMessage(message *DeliveryMessage) {
+func (s *onsiteService) onDeliveryMessage(message *DeliveryMessage) {
 	messageId := generateMessageId()
 	err := s.sendMessage(message.Endpoint, messageId, message.Data)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s onsiteService) onDeliveryMessage(message *DeliveryMessage) {
 	}
 }
 
-func (s onsiteService) onMembershipMessage(message *MembershipMessage) {
+func (s *onsiteService) onMembershipMessage(message *MembershipMessage) {
 	if message.OwnerId == s.clientManager.ID {
 		return
 	}
@@ -142,7 +142,7 @@ func (s onsiteService) onMembershipMessage(message *MembershipMessage) {
 	}
 }
 
-func (s onsiteService) onAckMessage(message *AckMessage) {
+func (s *onsiteService) onAckMessage(message *AckMessage) {
 	log.Debugw("Received ACK message", "messageId", message.ID)
 	if _, found := s.unAckMessages[message.ID]; found {
 		delete(s.unAckMessages, message.ID)
@@ -150,7 +150,7 @@ func (s onsiteService) onAckMessage(message *AckMessage) {
 	}
 }
 
-func (s onsiteService) sendMessage(clientId string, messageId string, data interface{}) error {
+func (s *onsiteService) sendMessage(clientId string, messageId string, data interface{}) error {
 	message := getWrappedMessage(messageId, data)
 	return s.clientManager.SendMessage(clientId, message)
 }
