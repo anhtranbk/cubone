@@ -34,6 +34,19 @@ func NewOnsiteService(
 	}
 }
 
+func NewOnsiteServiceFromConfig(config Config) *onsiteService {
+	bloomFilter := NewInmemoryBloomFilter()
+	fakePubSub := FakePubSub{}
+
+	return &onsiteService{
+		clientManager: NewClientManager(config, bloomFilter),
+		publisher:     &fakePubSub,
+		subscriber:    &fakePubSub,
+		unAckMessages: make(map[string]*unacknowledgedMessage),
+		config:        &config,
+	}
+}
+
 func (s onsiteService) ConnectClient(clientId string, websocket WebSocketConnection) error {
 	err := s.clientManager.Connect(clientId, websocket)
 	if err != nil {
