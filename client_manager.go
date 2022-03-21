@@ -56,7 +56,7 @@ func NewClientManager(config Config, bloomFilter BloomFilter) *ClientManager {
 		messageHandlers:  make(map[string][]MessageHandler),
 	}
 	cm.numActiveClients.Store(0)
-	log.Infow("clientManager initialized", "id", cm.ID)
+	log.Infow("ClientManager initialized", "id", cm.ID)
 	return cm
 }
 
