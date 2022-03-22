@@ -25,6 +25,7 @@ func NewServer(config Config) (*Server, error) {
 	router.HandleFunc("/register/{client_id}/{x_client_id}/{x_client_secret}", h.createWebSocket)
 	router.HandleFunc("/deregister/{client_id}/{x_client_id}/{x_client_secret}", h.removeWebSocket)
 	router.HandleFunc("/internal/onsite/trigger", h.trigger)
+	router.HandleFunc("/demo-client", demoClient)
 
 	httpCfg := config.HTTPServer
 	server := &http.Server{
