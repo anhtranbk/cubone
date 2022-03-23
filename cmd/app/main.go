@@ -14,7 +14,8 @@ func main() {
 			WriteBufferSize: 8192,
 		},
 		HTTPServer: cubone.HTTPServerConfig{
-			Address:              "localhost:11053",
+			Address:              "localhost",
+			Port: 11053,
 			ReadTimeoutInSecond:  5,
 			WriteTimeoutInSecond: 5,
 		},
