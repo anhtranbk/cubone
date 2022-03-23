@@ -14,6 +14,7 @@ type GorillaWsConfig struct {
 
 type HTTPServerConfig struct {
 	Address              string
+	Port                 int
 	ReadTimeoutInSecond  int
 	WriteTimeoutInSecond int
 }
