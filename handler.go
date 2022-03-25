@@ -78,7 +78,7 @@ type handler struct {
 }
 
 // /register/{client_id}/{x_client_id}/{x_client_access_token}
-func (h handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
+func (h *handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := h.wsServer.NewConnection(w, r)
 	if err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, "Could not create websocket connection")
@@ -100,7 +100,7 @@ func (h handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 // /deregister/{client_id}/{x_client_id}/{x_client_access_token}
-func (h handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
+func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 	if ok := handleRequestAuthentication(w, r); !ok {
 		return
 	}
@@ -116,7 +116,7 @@ func (h handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 // /internal/onsite/trigger
-func (h handler) trigger(w http.ResponseWriter, r *http.Request) {
+func (h *handler) trigger(w http.ResponseWriter, r *http.Request) {
 	reader, err := r.GetBody()
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, "Could not read body request")

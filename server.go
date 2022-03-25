@@ -38,7 +38,7 @@ func NewServer(config Config) (*Server, error) {
 	return &Server{server: server}, nil
 }
 
-func (s Server) Serve() error {
+func (s *Server) Serve() error {
 	log.Infof("Server started listening at %s", s.server.Addr)
 	return s.server.ListenAndServe()
 }
