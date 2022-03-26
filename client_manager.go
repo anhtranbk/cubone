@@ -82,7 +82,7 @@ func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 }
 
 func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
-	if _, found := cm.clients[clientId]; !found {
+	if _, found := cm.clients[clientId]; found {
 		log.Errorw("Client already existed", "clientId", clientId)
 		return ClientIdDuplicated
 	}
