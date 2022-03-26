@@ -2,12 +2,13 @@ package cubone
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
 )
 
-const html = `
+const htmlTemplate = `
 <!DOCTYPE html>
 <html>
     <head>
@@ -30,7 +31,7 @@ const html = `
                 clientId = Date.now()
             }
             document.querySelector("#ws-id").textContent = clientId;
-            var ws = new WebSocket("ws://localhost:11053/prile/ws/register/${clientId}/abc/xyz");
+            var ws = new WebSocket("ws://localhost:%d/ws/register/" + clientId + "/abc/xyz");
 
             const messageOrders = new Map()
             const maxMessagePerOrder = 8
@@ -75,6 +76,7 @@ type WSServer interface {
 type handler struct {
 	wsServer      WSServer
 	onsiteService *onsiteService
+	config        Config
 }
 
 // /register/{client_id}/{x_client_id}/{x_client_access_token}
@@ -143,6 +145,11 @@ func (h *handler) trigger(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *handler) demoClient(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/html")
+	_, _ = w.Write([]byte(fmt.Sprintf(htmlTemplate, h.config.HTTPServer.Port)))
+}
+
 func handleRequestAuthentication(w http.ResponseWriter, r *http.Request) bool {
 	params := mux.Vars(r)
 	xClientId := params["x_client_id"]
@@ -172,5 +179,5 @@ func writeErrorResponse(w http.ResponseWriter, statusCode int, errorMessage stri
 
 func demoClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/html")
-	_, _ = w.Write([]byte(html))
+	_, _ = w.Write([]byte(htmlTemplate))
 }

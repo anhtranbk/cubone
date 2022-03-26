@@ -19,14 +19,15 @@ func NewServer(config Config) (*Server, error) {
 	h := &handler{
 		wsServer:      wsServer,
 		onsiteService: NewOnsiteServiceFromConfig(config),
+		config: config,
 	}
 
 	router := mux.NewRouter()
 	// Url patterns look ugly, but we keep them for compatible with Python version
-	router.HandleFunc("/register/{client_id}/{x_client_id}/{x_client_secret}", h.createWebSocket)
-	router.HandleFunc("/deregister/{client_id}/{x_client_id}/{x_client_secret}", h.removeWebSocket)
-	router.HandleFunc("/internal/onsite/trigger", h.trigger)
-	router.HandleFunc("/demo-client", demoClient)
+	router.HandleFunc("/ws/register/{client_id}/{x_client_id}/{x_client_secret}", h.createWebSocket)
+	router.HandleFunc("/ws/deregister/{client_id}/{x_client_id}/{x_client_secret}", h.removeWebSocket)
+	router.HandleFunc("/ws/internal/onsite/trigger", h.trigger)
+	router.HandleFunc("/demo-client", h.demoClient)
 
 	httpCfg := config.HTTPServer
 	server := &http.Server{

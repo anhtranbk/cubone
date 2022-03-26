@@ -39,6 +39,6 @@ func (f FakePubSub) GetMessage(timeout int64) (*PubSubMessage, error) {
 }
 
 func (f FakePubSub) Publish(channel string, data interface{}) error {
-	log.Infow("message published", "channel", channel, "data", data)
+	log.Debugw("message published", "channel", channel, "data", data)
 	return nil
 }
