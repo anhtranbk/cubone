@@ -37,23 +37,23 @@ type Client struct {
 }
 
 type ClientManager struct {
-	ID               string
-	config           Config
-	clients          map[string]*Client
-	numActiveClients *atomic.Int32
-	blf              BloomFilter
-	ch               chan *WSClientMessage
+	ID           string
+	cfg          Config
+	clients      map[string]*Client
+	totalClients *atomic.Int32
+	bf           BloomFilter
+	msgCh        chan *WSClientMessage
 }
 
-func NewClientManager(config Config, bloomFilter BloomFilter) *ClientManager {
+func NewClientManager(cfg Config, bf BloomFilter) *ClientManager {
 	cm := &ClientManager{
-		ID:               uuid.NewString(),
-		config:           config,
-		clients:          map[string]*Client{},
-		numActiveClients: &atomic.Int32{},
-		blf:              bloomFilter,
+		ID:           uuid.NewString(),
+		cfg:          cfg,
+		clients:      map[string]*Client{},
+		totalClients: &atomic.Int32{},
+		bf:           bf,
 	}
-	cm.numActiveClients.Store(0)
+	cm.totalClients.Store(0)
 	log.Infow("ClientManager initialized", "id", cm.ID)
 	return cm
 }
@@ -75,7 +75,7 @@ func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 	if cm.IsLocalActiveClient(clientId) {
 		return true, nil
 	}
-	return cm.blf.Exists(bloomFilterKey, clientId)
+	return cm.bf.Exists(bloomFilterKey, clientId)
 }
 
 func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
@@ -83,13 +83,13 @@ func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) er
 		log.Errorw("Client already existed", "clientId", clientId)
 		return ClientIdDuplicated
 	}
-	if err := cm.blf.Add(bloomFilterKey, clientId); err != nil {
+	if err := cm.bf.Add(bloomFilterKey, clientId); err != nil {
 		return err
 	}
 
 	client := &Client{ID: clientId, wsConn: wsConn}
 	cm.clients[clientId] = client
-	cm.numActiveClients.Inc()
+	cm.totalClients.Inc()
 	log.Infow("Client connected", "clientId", clientId)
 
 	return cm.receiveClientMessage(client)
@@ -106,7 +106,7 @@ func (cm *ClientManager) Disconnect(clientId string) error {
 	err := client.wsConn.Close()
 	if err == nil {
 		delete(cm.clients, clientId)
-		cm.numActiveClients.Dec()
+		cm.totalClients.Dec()
 		log.Infow("Client disconnected", "clientId", clientId)
 	}
 	return err
@@ -150,7 +150,7 @@ func (cm *ClientManager) Broadcast(message interface{}) error {
 }
 
 func (cm *ClientManager) MessageChannel() <-chan *WSClientMessage {
-	return cm.ch
+	return cm.msgCh
 }
 
 func (cm *ClientManager) receiveClientMessage(client *Client) error {
@@ -169,6 +169,6 @@ func (cm *ClientManager) receiveClientMessage(client *Client) error {
 		}
 
 		log.Debugw("received message", "clientId", client.ID, "message", message)
-		cm.ch <- &message
+		cm.msgCh <- &message
 	}
 }
