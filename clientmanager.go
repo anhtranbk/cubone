@@ -54,7 +54,7 @@ func NewClientManager(cfg Config, bf BloomFilter) *ClientManager {
 		bf:           bf,
 	}
 	cm.totalClients.Store(0)
-	log.Infow("ClientManager initialized", "id", cm.ID)
+	log.Infow("clientManager initialized", "id", cm.ID)
 	return cm
 }
 
@@ -80,7 +80,7 @@ func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 
 func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
 	if _, found := cm.clients[clientId]; found {
-		log.Errorw("Client already existed", "clientId", clientId)
+		log.Errorw("client already existed", "clientId", clientId)
 		return ClientIdDuplicated
 	}
 	if err := cm.bf.Add(bloomFilterKey, clientId); err != nil {
@@ -90,16 +90,18 @@ func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) er
 	client := &Client{ID: clientId, wsConn: wsConn}
 	cm.clients[clientId] = client
 	cm.totalClients.Inc()
-	log.Infow("Client connected", "clientId", clientId)
+	log.Infow("client connected", "clientId", clientId)
 
-	return cm.receiveClientMessage(client)
+	go cm.receiveMessage(client)
+
+	return nil
 }
 
 func (cm *ClientManager) Disconnect(clientId string) error {
-	log.Debugw("Disconnecting client ...", "clientId", clientId)
+	log.Debugw("disconnecting client ...", "clientId", clientId)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("Could not disconnect client, client not found", "clientId", clientId)
+		log.Warnw("could not disconnect client, client not found", "clientId", clientId)
 		return ClientNotFoundError
 	}
 
@@ -107,16 +109,16 @@ func (cm *ClientManager) Disconnect(clientId string) error {
 	if err == nil {
 		delete(cm.clients, clientId)
 		cm.totalClients.Dec()
-		log.Infow("Client disconnected", "clientId", clientId)
+		log.Infow("client disconnected", "clientId", clientId)
 	}
 	return err
 }
 
 func (cm *ClientManager) SendMessage(clientId string, message interface{}) error {
-	log.Debugw("Sending message", "clientId", clientId, "message", message)
+	log.Debugw("sending message", "clientId", clientId, "message", message)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("Client was not found", "clientId", clientId)
+		log.Warnw("client was not found", "clientId", clientId)
 		return ClientNotFoundError
 	}
 
@@ -132,7 +134,7 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	if err != nil {
 		// Normally this error occurs when handler are trying to send data to a closed connection.
 		// TODO: We should disconnect and remove this client ?
-		log.Errorw("Error occurred while sending message to client", "error", err.Error())
+		log.Errorw("error occurred while sending message to client", "error", err.Error())
 		_ = cm.Disconnect(clientId)
 	}
 	return err
@@ -153,7 +155,7 @@ func (cm *ClientManager) MessageChannel() <-chan *WSClientMessage {
 	return cm.msgCh
 }
 
-func (cm *ClientManager) receiveClientMessage(client *Client) error {
+func (cm *ClientManager) receiveMessage(client *Client) error {
 	defer cm.Disconnect(client.ID)
 	for {
 		bytes, err := client.wsConn.Receive()
