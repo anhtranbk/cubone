@@ -3,9 +3,10 @@ package cubone
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 const htmlTemplate = `
@@ -74,46 +75,43 @@ type WSServer interface {
 }
 
 type handler struct {
-	wsServer      WSServer
-	onsiteService *onsiteService
-	config        Config
+	cfg       Config
+	wsServer  WSServer
+	onsiteSvc *OnsiteService
 }
 
 // /register/{client_id}/{x_client_id}/{x_client_access_token}
 func (h *handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := h.wsServer.NewConnection(w, r)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "Could not create websocket connection")
-		log.Errorw("Could not create websocket connection", "error", err.Error())
+	if ok := handleAuthentication(w, r); !ok {
 		return
 	}
 
-	if ok := handleRequestAuthentication(w, r); !ok {
+	conn, err := h.wsServer.NewConnection(w, r)
+	if err != nil {
+		log.Errorw("could not open websocket connection", "err", err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, "could not create websocket connection")
 		return
 	}
 
 	params := mux.Vars(r)
 	clientId := params["client_id"]
-	err = h.onsiteService.ConnectClient(clientId, conn)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "Could not create websocket connection")
-		log.Errorw("Could not create websocket connection", "error", err.Error())
+	if err := h.onsiteSvc.ConnectClient(clientId, conn); err != nil {
+		log.Errorw("could not open websocket connection", "error", err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, "could not create websocket connection")
 	}
 }
 
 // /deregister/{client_id}/{x_client_id}/{x_client_access_token}
 func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
-	if ok := handleRequestAuthentication(w, r); !ok {
+	if ok := handleAuthentication(w, r); !ok {
 		return
 	}
 
 	params := mux.Vars(r)
 	clientId := params["client_id"]
-	err := h.onsiteService.DisconnectClient(clientId)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "Could not remove websocket connection")
-		log.Errorw("Could not remove websocket connection", "error", err.Error())
-
+	if err := h.onsiteSvc.DisconnectClient(clientId); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "could not remove websocket connection")
+		log.Errorw("could not close websocket connection", "error", err.Error())
 	}
 }
 
@@ -121,63 +119,54 @@ func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 func (h *handler) trigger(w http.ResponseWriter, r *http.Request) {
 	reader, err := r.GetBody()
 	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, "Could not read body request")
+		writeErrorResponse(w, http.StatusBadRequest, "could not read trigger request")
 		return
 	}
 	buffer, err := ioutil.ReadAll(reader)
 	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, "Could not read body request")
+		writeErrorResponse(w, http.StatusBadRequest, "could not read trigger request")
 		return
 	}
 
-	var message DeliveryMessage
-	err = json.Unmarshal(buffer, &message)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, "Could not parse body request")
+	var msg DeliveryMessage
+	if err := json.Unmarshal(buffer, &msg); err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, "could not parse trigger request")
 		return
 	}
 
-	err = h.onsiteService.PublishMessage(&message)
-	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "handler could not publish message")
-		log.Errorw("Could not publish message", "error", err.Error())
+	if err := h.onsiteSvc.PublishMessage(&msg); err != nil {
+		writeErrorResponse(w, http.StatusInternalServerError, "could not publish message")
 		return
 	}
 }
 
 func (h *handler) demoClient(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/html")
-	_, _ = w.Write([]byte(fmt.Sprintf(htmlTemplate, h.config.HTTPServer.Port)))
+	_, _ = w.Write([]byte(fmt.Sprintf(htmlTemplate, h.cfg.HTTPServer.Port)))
 }
 
-func handleRequestAuthentication(w http.ResponseWriter, r *http.Request) bool {
+func handleAuthentication(w http.ResponseWriter, r *http.Request) bool {
 	params := mux.Vars(r)
-	xClientId := params["x_client_id"]
-	xClientSecret := params["x_client_secret"]
-	ok, err := authenticate(xClientId, xClientSecret)
+	id := params["x_client_id"]
+	secret := params["x_client_secret"]
+	ok, err := authenticate(id, secret)
 	if err != nil {
-		writeErrorResponse(w, http.StatusUnauthorized, "invalid credentials")
+		writeErrorResponse(w, http.StatusInternalServerError, err.Error())
 		return false
 	}
 	if !ok {
-		w.WriteHeader(401)
-		_, _ = w.Write([]byte("invalid credentials"))
+		writeErrorResponse(w, http.StatusUnauthorized, "invalid credentials")
 		return false
 	}
 	return true
 }
 
 func authenticate(clientId string, clientSecret string) (bool, error) {
-	// TODO implement authentication here or add an authenticate service
-	return true, nil
+	// TODO implement authentication here or forward to a remote auth service
+	return clientId != "" && clientSecret != "", nil
 }
 
-func writeErrorResponse(w http.ResponseWriter, statusCode int, errorMessage string) {
+func writeErrorResponse(w http.ResponseWriter, statusCode int, msg string) {
 	w.WriteHeader(statusCode)
-	_, _ = w.Write([]byte(errorMessage))
-}
-
-func demoClient(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/html")
-	_, _ = w.Write([]byte(htmlTemplate))
+	_, _ = w.Write([]byte(msg))
 }
