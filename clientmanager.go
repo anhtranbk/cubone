@@ -67,13 +67,12 @@ func (cm *ClientManager) GetClientIds() []string {
 }
 
 func (cm *ClientManager) IsLocalActiveClient(clientId string) bool {
-	_, ok := cm.clients[clientId]
-	return ok
+	_, found := cm.clients[clientId]
+	return found
 }
 
 func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
-	if _, ok := cm.clients[clientId]; ok {
-		//do something here
+	if cm.IsLocalActiveClient(clientId) {
 		return true, nil
 	}
 	return cm.blf.Exists(bloomFilterKey, clientId)
