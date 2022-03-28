@@ -3,6 +3,7 @@ package cubone
 import (
 	"encoding/json"
 	"errors"
+
 	"github.com/google/uuid"
 	"go.uber.org/atomic"
 )
@@ -17,10 +18,8 @@ var (
 type WebSocketConnection interface {
 	Close() error
 
-	SendText(data string) error
 	Send(data []byte) error
-
-	ReceiveText() (string, error)
+	SendJson(data interface{}) error
 	Receive() ([]byte, error)
 }
 
@@ -42,8 +41,8 @@ type ClientManager struct {
 	config           Config
 	clients          map[string]*Client
 	numActiveClients *atomic.Int32
-	bloomFilter      BloomFilter
-	messageHandlers  map[string][]MessageHandler
+	blf              BloomFilter
+	ch               chan *WSClientMessage
 }
 
 func NewClientManager(config Config, bloomFilter BloomFilter) *ClientManager {
@@ -52,8 +51,7 @@ func NewClientManager(config Config, bloomFilter BloomFilter) *ClientManager {
 		config:           config,
 		clients:          map[string]*Client{},
 		numActiveClients: &atomic.Int32{},
-		bloomFilter:      bloomFilter,
-		messageHandlers:  make(map[string][]MessageHandler),
+		blf:              bloomFilter,
 	}
 	cm.numActiveClients.Store(0)
 	log.Infow("ClientManager initialized", "id", cm.ID)
@@ -78,7 +76,7 @@ func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 		//do something here
 		return true, nil
 	}
-	return cm.bloomFilter.Exists(bloomFilterKey, clientId)
+	return cm.blf.Exists(bloomFilterKey, clientId)
 }
 
 func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
@@ -86,14 +84,16 @@ func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) er
 		log.Errorw("Client already existed", "clientId", clientId)
 		return ClientIdDuplicated
 	}
-	if err := cm.bloomFilter.Add(bloomFilterKey, clientId); err != nil {
+	if err := cm.blf.Add(bloomFilterKey, clientId); err != nil {
 		return err
 	}
 
-	cm.clients[clientId] = &Client{ID: clientId, wsConn: wsConn}
+	client := &Client{ID: clientId, wsConn: wsConn}
+	cm.clients[clientId] = client
 	cm.numActiveClients.Inc()
 	log.Infow("Client connected", "clientId", clientId)
-	return nil
+
+	return cm.receiveClientMessage(client)
 }
 
 func (cm *ClientManager) Disconnect(clientId string) error {
@@ -117,7 +117,7 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	log.Debugw("Sending message", "clientId", clientId, "message", message)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("Client was not found on this handler", "clientId", clientId)
+		log.Warnw("Client was not found", "clientId", clientId)
 		return ClientNotFoundError
 	}
 
@@ -125,13 +125,9 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	if b, ok := message.([]byte); ok {
 		err = client.wsConn.Send(b)
 	} else if s, ok := message.(string); ok {
-		err = client.wsConn.SendText(s)
+		err = client.wsConn.Send([]byte(s))
 	} else {
-		data, err2 := json.Marshal(message)
-		if err2 != nil {
-			return err2
-		}
-		err = client.wsConn.Send(data)
+		err = client.wsConn.SendJson(b)
 	}
 
 	if err != nil {
@@ -154,38 +150,26 @@ func (cm *ClientManager) Broadcast(message interface{}) error {
 	return nil
 }
 
-func (cm *ClientManager) ReceiveMessage(clientId string) (*WSClientMessage, error) {
-	client, found := cm.clients[clientId]
-	if !found {
-		return nil, ClientNotFoundError
-	}
-
-	bytes, err := client.wsConn.Receive()
-	if err != nil {
-		return nil, err
-	}
-	var message WSClientMessage
-	err = json.Unmarshal(bytes, &message)
-	return &message, err
+func (cm *ClientManager) MessageChannel() <-chan *WSClientMessage {
+	return cm.ch
 }
 
-func (cm *ClientManager) OnMessage(msgType string, handler MessageHandler) {
-	handlers, found := cm.messageHandlers[msgType]
-	if !found {
-		handlers = make([]MessageHandler, 8)
-	}
-	handlers = append(handlers, handler)
-	cm.messageHandlers[msgType] = handlers
-}
+func (cm *ClientManager) receiveClientMessage(client *Client) error {
+	defer cm.Disconnect(client.ID)
+	for {
+		bytes, err := client.wsConn.Receive()
+		if err != nil {
+			return err
+		}
 
-func (cm *ClientManager) handleMessage(clientId string, message *WSClientMessage) {
-	log.Debugw("Message received", "clientId", clientId, "message", message)
-	handlers, found := cm.messageHandlers[message.Type]
-	if !found {
-		log.Warnw("No handlers found for current message type", "type", message.Type)
-		return
-	}
-	for _, handle := range handlers {
-		_ = handle(clientId, message)
+		var message WSClientMessage
+		err = json.Unmarshal(bytes, &message)
+		if err != nil {
+			log.Warnf("received malformed message: %v", err)
+			return err
+		}
+
+		log.Debugw("received message", "clientId", client.ID, "message", message)
+		cm.ch <- &message
 	}
 }
