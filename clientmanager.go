@@ -1,8 +1,8 @@
 package cubone
 
 import (
-	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/atomic"
@@ -11,8 +11,9 @@ import (
 const bloomFilterKey = "wsClients"
 
 var (
-	ClientNotFoundError = errors.New("client not found")
-	ClientIdDuplicated  = errors.New("clientId duplicated")
+	ClientNotFoundErr     = errors.New("client not found")
+	ClientIdDuplicatedErr = errors.New("clientId duplicated")
+	TimeoutErr            = errors.New("connection timeout")
 )
 
 type WebSocketConnection interface {
@@ -31,9 +32,15 @@ type ClientStatusListener interface {
 
 type MessageHandler func(clientId string, data interface{}) error
 
-type Client struct {
-	ID     string
-	wsConn WebSocketConnection
+type connectRequest struct {
+	resCh    chan error
+	conn     WebSocketConnection
+	clientId string
+}
+
+type disconnectRequest struct {
+	resCh    chan error
+	clientId string
 }
 
 type ClientManager struct {
@@ -42,7 +49,10 @@ type ClientManager struct {
 	clients      map[string]*Client
 	totalClients *atomic.Int32
 	bf           BloomFilter
-	msgCh        chan *WSClientMessage
+	doneCh       chan struct{}
+	clientMsgCh  chan *WSClientMessage
+	connectCh    chan *connectRequest
+	disconnectCh chan *disconnectRequest
 }
 
 func NewClientManager(cfg Config, bf BloomFilter) *ClientManager {
@@ -50,10 +60,13 @@ func NewClientManager(cfg Config, bf BloomFilter) *ClientManager {
 		ID:           uuid.NewString(),
 		cfg:          cfg,
 		clients:      map[string]*Client{},
-		totalClients: &atomic.Int32{},
+		totalClients: atomic.NewInt32(0),
 		bf:           bf,
+		doneCh:       make(chan struct{}),
+		clientMsgCh:  make(chan *WSClientMessage),
+		connectCh:    make(chan *connectRequest),
+		disconnectCh: make(chan *disconnectRequest),
 	}
-	cm.totalClients.Store(0)
 	log.Infow("clientManager initialized", "id", cm.ID)
 	return cm
 }
@@ -78,31 +91,82 @@ func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 	return cm.bf.Exists(bloomFilterKey, clientId)
 }
 
-func (cm *ClientManager) Connect(clientId string, wsConn WebSocketConnection) error {
+func (cm *ClientManager) Startup() error {
+	go cm.run()
+	return nil
+}
+
+func (cm *ClientManager) Shutdown() error {
+	cm.doneCh <- struct{}{}
+	return nil
+}
+
+func (cm *ClientManager) run() {
+	defer cm.cleanup()
+	for {
+		select {
+		case <-cm.doneCh:
+			break
+		case req := <-cm.connectCh:
+			req.resCh <- cm.doConnect(req.clientId, req.conn)
+		case req := <-cm.disconnectCh:
+			req.resCh <- cm.doDisconnect(req.clientId)
+		}
+	}
+}
+
+func (cm *ClientManager) cleanup() {
+	for id, client := range cm.clients {
+		if err := client.close(); err != nil {
+			log.Errorw("clean up client error", "id", id, "error", err)
+		}
+	}
+}
+
+func (cm *ClientManager) Connect(clientId string, ws WebSocketConnection) error {
+	req := &connectRequest{
+		resCh:    make(chan error),
+		conn:     ws,
+		clientId: clientId,
+	}
+	cm.connectCh <- req
+
+	return waitOrTimeout(req.resCh, cm.cfg.ConnectionTimeout)
+}
+
+func (cm *ClientManager) doConnect(clientId string, ws WebSocketConnection) error {
 	if _, found := cm.clients[clientId]; found {
-		log.Errorw("client already existed", "clientId", clientId)
-		return ClientIdDuplicated
+		log.Errorw("client already existed", "id", clientId)
+		return ClientIdDuplicatedErr
 	}
 	if err := cm.bf.Add(bloomFilterKey, clientId); err != nil {
 		return err
 	}
 
-	client := &Client{ID: clientId, wsConn: wsConn}
+	client := NewClient(clientId, ws, cm.clientMsgCh)
 	cm.clients[clientId] = client
 	cm.totalClients.Inc()
-	log.Infow("client connected", "clientId", clientId)
+	log.Infow("client connected", "id", clientId)
 
-	go cm.receiveMessage(client)
-
-	return nil
+	return client.startup()
 }
 
 func (cm *ClientManager) Disconnect(clientId string) error {
-	log.Debugw("disconnecting client ...", "clientId", clientId)
+	req := &disconnectRequest{
+		resCh:    make(chan error),
+		clientId: clientId,
+	}
+	cm.disconnectCh <- req
+
+	return waitOrTimeout(req.resCh, cm.cfg.ConnectionTimeout)
+}
+
+func (cm *ClientManager) doDisconnect(clientId string) error {
+	log.Debugw("disconnecting client ...", "id", clientId)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("could not disconnect client, client not found", "clientId", clientId)
-		return ClientNotFoundError
+		log.Warnw("could not disconnect client, client not found", "id", clientId)
+		return ClientNotFoundErr
 	}
 
 	err := client.wsConn.Close()
@@ -118,8 +182,8 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	log.Debugw("sending message", "clientId", clientId, "message", message)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("client was not found", "clientId", clientId)
-		return ClientNotFoundError
+		log.Warnw("client was not found", "id", clientId)
+		return ClientNotFoundErr
 	}
 
 	var err error
@@ -152,25 +216,14 @@ func (cm *ClientManager) Broadcast(message interface{}) error {
 }
 
 func (cm *ClientManager) MessageChannel() <-chan *WSClientMessage {
-	return cm.msgCh
+	return cm.clientMsgCh
 }
 
-func (cm *ClientManager) receiveMessage(client *Client) error {
-	defer cm.Disconnect(client.ID)
-	for {
-		bytes, err := client.wsConn.Receive()
-		if err != nil {
-			return err
-		}
-
-		var message WSClientMessage
-		err = json.Unmarshal(bytes, &message)
-		if err != nil {
-			log.Warnf("received malformed message: %v", err)
-			return err
-		}
-
-		log.Debugw("received message", "clientId", client.ID, "message", message)
-		cm.msgCh <- &message
+func waitOrTimeout(ch <-chan error, timeout time.Duration) error {
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		return TimeoutErr
 	}
 }

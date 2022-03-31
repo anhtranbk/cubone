@@ -1,8 +1,11 @@
 package cubone
 
+import "time"
+
 type Config struct {
 	MessageRetryMaxTimeout int64
 	MessageRetryDelay      int64
+	ConnectionTimeout      time.Duration
 	GorillaWS              GorillaWsConfig
 	HTTPServer             HTTPServerConfig
 }
