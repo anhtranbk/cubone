@@ -8,8 +8,6 @@ import (
 	"go.uber.org/atomic"
 )
 
-const bloomFilterKey = "wsClients"
-
 var (
 	ClientNotFoundErr     = errors.New("client not found")
 	ClientIdDuplicatedErr = errors.New("clientId duplicated")
@@ -48,20 +46,18 @@ type ClientManager struct {
 	cfg          Config
 	clients      map[string]*Client
 	totalClients *atomic.Int32
-	bf           BloomFilter
 	doneCh       chan struct{}
 	clientMsgCh  chan *WSClientMessage
 	connectCh    chan *connectRequest
 	disconnectCh chan *disconnectRequest
 }
 
-func NewClientManager(cfg Config, bf BloomFilter) *ClientManager {
+func NewClientManager(cfg Config) *ClientManager {
 	cm := &ClientManager{
 		ID:           uuid.NewString(),
 		cfg:          cfg,
 		clients:      map[string]*Client{},
 		totalClients: atomic.NewInt32(0),
-		bf:           bf,
 		doneCh:       make(chan struct{}),
 		clientMsgCh:  make(chan *WSClientMessage),
 		connectCh:    make(chan *connectRequest),
@@ -85,10 +81,11 @@ func (cm *ClientManager) IsLocalActiveClient(clientId string) bool {
 }
 
 func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
-	if cm.IsLocalActiveClient(clientId) {
-		return true, nil
-	}
-	return cm.bf.Exists(bloomFilterKey, clientId)
+	// In original Python version, we have a bloom filter service
+	// (often served by Redis) to check whether the client is exist
+	// Since bloom filter is a data structure that is possible to return
+	// "false positive" results... TBD.
+	return cm.IsLocalActiveClient(clientId), nil
 }
 
 func (cm *ClientManager) Startup() error {
@@ -138,9 +135,6 @@ func (cm *ClientManager) doConnect(clientId string, ws WebSocketConnection) erro
 	if _, found := cm.clients[clientId]; found {
 		log.Errorw("client already existed", "id", clientId)
 		return ClientIdDuplicatedErr
-	}
-	if err := cm.bf.Add(bloomFilterKey, clientId); err != nil {
-		return err
 	}
 
 	client := NewClient(clientId, ws, cm.clientMsgCh)
