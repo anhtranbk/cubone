@@ -76,10 +76,6 @@ const (
 	AuthenticateError    = "authentication error occurred"
 )
 
-type WSConnFactory interface {
-	NewConnection(w http.ResponseWriter, r *http.Request) (WSConnection, error)
-}
-
 type handler struct {
 	cfg           Config
 	wsConnFactory WSConnFactory
@@ -92,7 +88,7 @@ func (h *handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := h.wsConnFactory.NewConnection(w, r)
+	conn, err := h.wsConnFactory(w, r)
 	if err != nil {
 		log.Errorw(OpenWsConnectionErr, "error", err)
 		writeErrorResponse(w, http.StatusInternalServerError, OpenWsConnectionErr)
