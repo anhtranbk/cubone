@@ -1,167 +1,205 @@
 package cubone
 
 import (
+	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-const MembershipChannel = "membership"
-const OnsiteChannel = "onsite"
+const (
+	MembershipChannel = "membership"
+	OnsiteChannel     = "onsite"
+)
 
-type unacknowledgedMessage struct {
+var (
+	InvalidOnsiteMessageErr = errors.New("invalid onsite message")
+	EndpointNotFoundErr     = errors.New("endpoint not found")
+	ServerInternalErr       = errors.New("server internal error")
+)
+
+type unAckMessage struct {
 	data     interface{}
 	clientId string
 	timeout  time.Time
 }
 
-type onsiteService struct {
-	clientManager *ClientManager
+type OnsiteService struct {
+	cfg           *Config
+	cm            *ClientManager
 	publisher     Publisher
 	subscriber    Subscriber
-	unAckMessages map[string]*unacknowledgedMessage
-	config        *Config
+	unAckMessages map[string]*unAckMessage
+	doneCh        chan struct{}
 }
 
-func NewOnsiteService(
-	clientManager *ClientManager,
-	publisher Publisher,
-	subscriber Subscriber,
-) *onsiteService {
-	return &onsiteService{
-		clientManager: clientManager,
-		publisher:     publisher,
-		subscriber:    subscriber,
-		unAckMessages: make(map[string]*unacknowledgedMessage),
+func NewOnsiteService(cm *ClientManager, pub Publisher, sub Subscriber) *OnsiteService {
+	return &OnsiteService{
+		cfg:           &Config{},
+		cm:            cm,
+		publisher:     pub,
+		subscriber:    sub,
+		unAckMessages: make(map[string]*unAckMessage),
+		doneCh:        make(chan struct{}),
 	}
 }
 
-func NewOnsiteServiceFromConfig(config Config) *onsiteService {
-	bloomFilter := NewInmemoryBloomFilter()
-	fakePubSub := FakePubSub{}
-
-	return &onsiteService{
-		clientManager: NewClientManager(config, bloomFilter),
-		publisher:     &fakePubSub,
-		subscriber:    &fakePubSub,
-		unAckMessages: make(map[string]*unacknowledgedMessage),
-		config:        &config,
+func NewOnsiteServiceFromConfig(cfg Config) *OnsiteService {
+	pubsub := NewFakePubSub()
+	return &OnsiteService{
+		cfg:           &cfg,
+		cm:            NewClientManager(cfg),
+		publisher:     pubsub,
+		subscriber:    pubsub,
+		unAckMessages: make(map[string]*unAckMessage),
+		doneCh:        make(chan struct{}),
 	}
 }
 
-func (s *onsiteService) ConnectClient(clientId string, websocket WebSocketConnection) error {
-	err := s.clientManager.Connect(clientId, websocket)
+func (s *OnsiteService) Start() error {
+	go s.run()
+	return nil
+}
+
+func (s *OnsiteService) Shutdown() error {
+	s.doneCh <- struct{}{}
+	return nil
+}
+
+func (s *OnsiteService) ConnectClient(clientId string, ws WebSocketConnection) error {
+	err := s.cm.Connect(clientId, ws)
 	if err != nil {
+		log.Errorw("could not connect to client", "id", clientId, "error", err)
 		return err
 	}
 	err = s.publisher.Publish(MembershipChannel, &MembershipMessage{
 		ClientId: clientId,
-		OwnerId:  s.clientManager.ID,
+		OwnerId:  s.cm.ID,
 	})
 	if err != nil {
-		log.Errorw("Could not publish message to pub/sub handler, maybe the connection lost. "+
-			"Refuse to create new WebSocket connection", "clientId", clientId)
+		log.Errorw("could not publish message to pub/sub handler, maybe the connection lost. "+
+			"Refuse to create new WebSocket connection", "id", clientId)
 		_ = s.DisconnectClient(clientId)
 	}
 	return err
 }
 
-func (s *onsiteService) DisconnectClient(clientId string) error {
-	err := s.clientManager.Disconnect(clientId)
+func (s *OnsiteService) DisconnectClient(clientId string) error {
+	err := s.cm.Disconnect(clientId)
 	if err != nil {
-		log.Errorw("Could not disconnect to client", "clientId", clientId)
+		log.Errorw("could not disconnect to client", "id", clientId)
 	}
 	return err
 }
 
-func (s *onsiteService) ReceivedWSMessage(clientId string) error {
-	panic("implement me")
-}
+func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
+	if msg == nil || msg.Endpoint == "" {
+		log.Warnw("received invalid message", "msg", msg)
+		return InvalidOnsiteMessageErr
+	}
 
-func (s *onsiteService) HandlePubSubMessages() error {
-	message, err := s.subscriber.GetMessage(100)
+	found, err := s.cm.IsActiveClient(msg.Endpoint)
 	if err != nil {
+		log.Errorf("checking active client error: %v", err)
+		return ServerInternalErr
+	}
+	if !found {
+		log.Warnw("endpoint not found", "endpoint", msg.Endpoint)
+		return EndpointNotFoundErr
+	}
+
+	if err := s.publisher.Publish(OnsiteChannel, msg); err != nil {
+		log.Errorf("could not publish message: %v", err)
 		return err
 	}
 
-	if message.Channel == OnsiteChannel {
-		s.onDeliveryMessage(NewDeliveryMessage(message))
-	} else if message.Channel == MembershipChannel {
-		s.onMembershipMessage(NewMembershipMessage(message))
-	} else {
-		log.Warnw("Pub-sub message channel is not supported", "channel", message.Channel)
-	}
+	log.Debugw("published message: %v", msg)
 	return nil
 }
 
-func (s *onsiteService) PublishMessage(message *DeliveryMessage) error {
-	return s.publisher.Publish(OnsiteChannel, message)
-}
-
-func (s *onsiteService) IsMembership(clientId string) (bool, error) {
-	return s.clientManager.IsActiveClient(clientId)
-}
-
-func (s *onsiteService) GetTotalActiveClients() error {
-	panic("implement me")
-}
-
-func (s *onsiteService) handlePubSubMessage(message *PubSubMessage) {
-	if message.Channel == OnsiteChannel {
-		s.onDeliveryMessage(NewDeliveryMessage(message))
-	} else if message.Channel == MembershipChannel {
-		s.onMembershipMessage(NewMembershipMessage(message))
-	} else {
-		log.Warnw("Pub-sub message channel is not supported", "channel", message.Channel)
-	}
-}
-
-func (s *onsiteService) onDeliveryMessage(message *DeliveryMessage) {
-	messageId := generateMessageId()
-	err := s.sendMessage(message.Endpoint, messageId, message.Data)
-	if err != nil {
-		log.Errorw("Error occurred while handling delivery message", "message", message)
-	}
-	s.unAckMessages[messageId] = &unacknowledgedMessage{
-		data:     message.Data,
-		clientId: message.Endpoint,
-		timeout:  time.Now().Add(time.Duration(s.config.MessageRetryMaxTimeout)),
-	}
-}
-
-func (s *onsiteService) onMembershipMessage(message *MembershipMessage) {
-	if message.OwnerId == s.clientManager.ID {
-		return
-	}
-	// Mean that this is not server where client be active, we should remove (if present) outdated connection
-	if s.clientManager.IsLocalActiveClient(message.ClientId) {
-		log.Debugw("Removing outdated client",
-			"clientId", message.ClientId, "ownerId", s.clientManager.ID)
-		err := s.clientManager.Disconnect(message.ClientId)
-		if err != nil {
-			log.Errorw("Error occurred while handling membership message", "message", message)
+func (s *OnsiteService) run() {
+	wsCh := s.cm.MessageChannel()
+	psCh := s.subscriber.Channel()
+	for {
+		select {
+		case <-s.doneCh:
+			break
+		case msg := <-wsCh:
+			s.handleWSMessage(msg)
+		case msg := <-psCh:
+			s.handlePubSubMessage(msg)
 		}
 	}
 }
 
-func (s *onsiteService) onAckMessage(message *AckMessage) {
-	log.Debugw("Received ACK message", "messageId", message.ID)
-	if _, found := s.unAckMessages[message.ID]; found {
-		delete(s.unAckMessages, message.ID)
-		log.Debugw("Message handled by client", "messageId", message.ID)
+func (s *OnsiteService) handleWSMessage(msg *WSClientMessage) {
+	ackMsg, err := NewAckMessage(msg)
+	if err != nil {
+		log.Errorf("could not parse ack message: %v", err)
+		return
+	}
+	s.onAckMessage(ackMsg)
+}
+
+func (s *OnsiteService) handlePubSubMessage(msg *PubSubMessage) {
+	if msg.Channel == OnsiteChannel {
+		s.onDeliveryMessage(NewDeliveryMessage(msg))
+	} else if msg.Channel == MembershipChannel {
+		s.onMembershipMessage(NewMembershipMessage(msg))
+	} else {
+		log.Warnw("received message from unsupported pub-sub channel", "channel", msg.Channel)
 	}
 }
 
-func (s *onsiteService) sendMessage(clientId string, messageId string, data interface{}) error {
-	message := getWrappedMessage(messageId, data)
-	return s.clientManager.SendMessage(clientId, message)
+func (s *OnsiteService) onDeliveryMessage(msg *DeliveryMessage) {
+	msgId := generateId()
+	if err := s.sendMessage(msg.Endpoint, msgId, msg.Data); err != nil {
+		log.Errorw("error occurred while handling delivery message", "msg", msg)
+		return
+	}
+
+	s.unAckMessages[msgId] = &unAckMessage{
+		data:     msg.Data,
+		clientId: msg.Endpoint,
+		timeout:  time.Now().Add(time.Duration(s.cfg.MessageRetryMaxTimeout)),
+	}
 }
 
-func getWrappedMessage(messageId string, data interface{}) *WSServerMessage {
+func (s *OnsiteService) onMembershipMessage(msg *MembershipMessage) {
+	if msg.OwnerId == s.cm.ID {
+		return
+	}
+	// Mean that this is not server where client active, we should remove (if present) outdated connection
+	if s.cm.IsLocalActiveClient(msg.ClientId) {
+		log.Debugw("removing outdated client",
+			"clientId", msg.ClientId,
+			"newOwner", msg.OwnerId,
+			"oldOwner", s.cm.ID)
+		if err := s.cm.Disconnect(msg.ClientId); err != nil {
+			log.Errorw("error occurred while handling membership message", "msg", msg)
+		}
+	}
+}
+
+func (s *OnsiteService) onAckMessage(msg *AckMessage) {
+	log.Debugw("received ACK message", "messageId", msg.ID)
+	if _, found := s.unAckMessages[msg.ID]; found {
+		delete(s.unAckMessages, msg.ID)
+		log.Debugw("message handled by client", "messageId", msg.ID)
+	}
+}
+
+func (s *OnsiteService) sendMessage(clientId string, msgId string, data interface{}) error {
+	return s.cm.SendMessage(clientId, toWSServerMessage(msgId, data))
+}
+
+func toWSServerMessage(msgId string, data interface{}) *WSServerMessage {
 	return &WSServerMessage{
-		ID:   messageId,
+		ID:   msgId,
 		Data: data,
 	}
 }
 
-func generateMessageId() string {
-	panic("implement me")
+func generateId() string {
+	return uuid.NewString()
 }
