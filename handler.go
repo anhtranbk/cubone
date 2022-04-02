@@ -70,14 +70,20 @@ const htmlTemplate = `
 </html>
 `
 
-type WSServer interface {
-	NewConnection(w http.ResponseWriter, r *http.Request) (WebSocketConnection, error)
+const (
+	OpenWsConnectionErr  = "could not establish websocket connection"
+	CloseWsConnectionErr = "could not close websocket connection"
+	AuthenticateError    = "authentication error occurred"
+)
+
+type WSConnFactory interface {
+	NewConnection(w http.ResponseWriter, r *http.Request) (WSConnection, error)
 }
 
 type handler struct {
-	cfg       Config
-	wsServer  WSServer
-	onsiteSvc *OnsiteService
+	cfg           Config
+	wsConnFactory WSConnFactory
+	onsiteSvc     *OnsiteService
 }
 
 // /register/{client_id}/{x_client_id}/{x_client_access_token}
@@ -86,18 +92,17 @@ func (h *handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := h.wsServer.NewConnection(w, r)
+	conn, err := h.wsConnFactory.NewConnection(w, r)
 	if err != nil {
-		log.Errorw("could not open websocket connection", "err", err.Error())
-		writeErrorResponse(w, http.StatusInternalServerError, "could not create websocket connection")
+		log.Errorw(OpenWsConnectionErr, "error", err)
+		writeErrorResponse(w, http.StatusInternalServerError, OpenWsConnectionErr)
 		return
 	}
 
 	params := mux.Vars(r)
 	clientId := params["client_id"]
 	if err := h.onsiteSvc.ConnectClient(clientId, conn); err != nil {
-		log.Errorw("could not open websocket connection", "error", err.Error())
-		writeErrorResponse(w, http.StatusInternalServerError, "could not create websocket connection")
+		writeErrorResponse(w, http.StatusInternalServerError, OpenWsConnectionErr)
 	}
 }
 
@@ -110,8 +115,8 @@ func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	clientId := params["client_id"]
 	if err := h.onsiteSvc.DisconnectClient(clientId); err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, "could not remove websocket connection")
-		log.Errorw("could not close websocket connection", "error", err.Error())
+		writeErrorResponse(w, http.StatusInternalServerError, CloseWsConnectionErr)
+		log.Errorw(CloseWsConnectionErr, "error", err)
 	}
 }
 
@@ -151,7 +156,8 @@ func handleAuthentication(w http.ResponseWriter, r *http.Request) bool {
 	secret := params["x_client_secret"]
 	ok, err := authenticate(id, secret)
 	if err != nil {
-		writeErrorResponse(w, http.StatusInternalServerError, err.Error())
+		log.Errorw(AuthenticateError, "error", err)
+		writeErrorResponse(w, http.StatusInternalServerError, AuthenticateError)
 		return false
 	}
 	if !ok {
