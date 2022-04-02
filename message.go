@@ -2,8 +2,9 @@ package cubone
 
 // WSClientMessage client request message
 type WSClientMessage struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	ClientId string
+	Type     string      `json:"type"`
+	Data     interface{} `json:"data"`
 }
 
 // WSServerMessage handler response message
@@ -26,20 +27,28 @@ type AckMessage struct {
 	ID string
 }
 
-func NewDeliveryMessage(pubSubMessage *PubSubMessage) *DeliveryMessage {
+func NewDeliveryMessage(msg *PubSubMessage) *DeliveryMessage {
 	// pub-sub messages are only sent by other servers, so we don't need to care about invalid message format here
-	data := pubSubMessage.Data.(map[string]interface{})
+	data := msg.Data.(map[string]interface{})
 	return &DeliveryMessage{
 		Endpoint: data["endpoint"].(string),
 		Data:     data["data"],
 	}
 }
 
-func NewMembershipMessage(pubSubMessage *PubSubMessage) *MembershipMessage {
+func NewMembershipMessage(msg *PubSubMessage) *MembershipMessage {
 	// pub-sub messages are only sent by other servers, so we don't need to care about invalid message format here
-	data := pubSubMessage.Data.(map[string]interface{})
+	data := msg.Data.(map[string]interface{})
 	return &MembershipMessage{
 		ClientId: data["client_id"].(string),
 		OwnerId:  data["owner_id"].(string),
 	}
+}
+
+func NewAckMessage(msg *WSClientMessage) (*AckMessage, error) {
+	// TODO: add error handling
+	data, _ := msg.Data.(map[string]interface{})
+	return &AckMessage{
+		ID: data["id"].(string),
+	}, nil
 }
