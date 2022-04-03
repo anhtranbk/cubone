@@ -8,14 +8,14 @@ import (
 
 type Client struct {
 	ID      string
-	wsConn  WebSocketConnection
+	wsConn  WSConnection
 	readCh  chan<- *WSClientMessage
 	writeCh chan []byte
 	done    chan struct{}
 	closed  *atomic.Bool
 }
 
-func NewClient(id string, wsConn WebSocketConnection, readCh chan<- *WSClientMessage) *Client {
+func NewClient(id string, wsConn WSConnection, readCh chan<- *WSClientMessage) *Client {
 	client := &Client{
 		ID:      id,
 		wsConn:  wsConn,
@@ -65,7 +65,7 @@ func (c *Client) processRead() {
 	for {
 		select {
 		case <-c.done:
-			break
+			return
 		default:
 			b, err := c.wsConn.Receive()
 			if err != nil {
