@@ -10,10 +10,10 @@ import (
 )
 
 var (
-	ClientNotFoundErr     = errors.New("client not found")
-	ClientIdDuplicatedErr = errors.New("clientId duplicated")
-	ClientDisconnectedErr = errors.New("client disconnected")
-	TimeoutErr            = errors.New("connection timeout")
+	ErrClientNotFound     = errors.New("client not found")
+	ErrClientIdDuplicated = errors.New("clientId duplicated")
+	ErrClientDisconnected = errors.New("client disconnected")
+	ErrOperationTimeout   = errors.New("operation timeout")
 )
 
 type ClientStatusListener interface {
@@ -97,7 +97,7 @@ func (cm *ClientManager) run() {
 	for {
 		select {
 		case <-cm.doneCh:
-			break
+			return
 		case req := <-cm.connectCh:
 			req.resCh <- cm.doConnect(req.clientId, req.conn)
 		case req := <-cm.disconnectCh:
@@ -128,7 +128,7 @@ func (cm *ClientManager) Connect(clientId string, ws WSConnection) error {
 func (cm *ClientManager) doConnect(clientId string, ws WSConnection) error {
 	if _, found := cm.clients[clientId]; found {
 		log.Errorw("client already existed", "id", clientId)
-		return ClientIdDuplicatedErr
+		return ErrClientIdDuplicated
 	}
 
 	client := NewClient(clientId, ws, cm.clientMsgCh)
@@ -154,7 +154,7 @@ func (cm *ClientManager) doDisconnect(clientId string) error {
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("could not disconnect client, client not found", "id", clientId)
-		return ClientNotFoundErr
+		return ErrClientNotFound
 	}
 
 	err := client.wsConn.Close()
@@ -171,12 +171,12 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("client was not found", "id", clientId)
-		return ClientNotFoundErr
+		return ErrClientNotFound
 	}
 
 	var err error
 	if client.closed.Load() {
-		return ClientDisconnectedErr
+		return ErrClientDisconnected
 	}
 	if b, ok := message.([]byte); ok {
 		client.write(b)
@@ -216,6 +216,6 @@ func waitOrTimeout(ch <-chan error, timeout time.Duration) error {
 	case err := <-ch:
 		return err
 	case <-time.After(timeout):
-		return TimeoutErr
+		return ErrOperationTimeout
 	}
 }
