@@ -1,6 +1,7 @@
 package cubone
 
 import (
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -11,16 +12,9 @@ import (
 var (
 	ClientNotFoundErr     = errors.New("client not found")
 	ClientIdDuplicatedErr = errors.New("clientId duplicated")
+	ClientDisconnectedErr = errors.New("client disconnected")
 	TimeoutErr            = errors.New("connection timeout")
 )
-
-type WebSocketConnection interface {
-	Close() error
-
-	Send(data []byte) error
-	SendJson(data interface{}) error
-	Receive() ([]byte, error)
-}
 
 type ClientStatusListener interface {
 	OnConnected(clientId string)
@@ -32,7 +26,7 @@ type MessageHandler func(clientId string, data interface{}) error
 
 type connectRequest struct {
 	resCh    chan error
-	conn     WebSocketConnection
+	conn     WSConnection
 	clientId string
 }
 
@@ -120,7 +114,7 @@ func (cm *ClientManager) cleanup() {
 	}
 }
 
-func (cm *ClientManager) Connect(clientId string, ws WebSocketConnection) error {
+func (cm *ClientManager) Connect(clientId string, ws WSConnection) error {
 	req := &connectRequest{
 		resCh:    make(chan error),
 		conn:     ws,
@@ -131,7 +125,7 @@ func (cm *ClientManager) Connect(clientId string, ws WebSocketConnection) error 
 	return waitOrTimeout(req.resCh, cm.cfg.ConnectionTimeout)
 }
 
-func (cm *ClientManager) doConnect(clientId string, ws WebSocketConnection) error {
+func (cm *ClientManager) doConnect(clientId string, ws WSConnection) error {
 	if _, found := cm.clients[clientId]; found {
 		log.Errorw("client already existed", "id", clientId)
 		return ClientIdDuplicatedErr
@@ -167,13 +161,13 @@ func (cm *ClientManager) doDisconnect(clientId string) error {
 	if err == nil {
 		delete(cm.clients, clientId)
 		cm.totalClients.Dec()
-		log.Infow("client disconnected", "clientId", clientId)
+		log.Infow("client disconnected", "id", clientId)
 	}
 	return err
 }
 
 func (cm *ClientManager) SendMessage(clientId string, message interface{}) error {
-	log.Debugw("sending message", "clientId", clientId, "message", message)
+	log.Debugw("sending message", "id", clientId, "message", message)
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("client was not found", "id", clientId)
@@ -181,12 +175,16 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	}
 
 	var err error
+	if client.closed.Load() {
+		return ClientDisconnectedErr
+	}
 	if b, ok := message.([]byte); ok {
-		err = client.wsConn.Send(b)
+		client.write(b)
 	} else if s, ok := message.(string); ok {
-		err = client.wsConn.Send([]byte(s))
+		client.write([]byte(s))
 	} else {
-		err = client.wsConn.SendJson(b)
+		b, err = json.Marshal(message)
+		client.write(b)
 	}
 
 	if err != nil {
