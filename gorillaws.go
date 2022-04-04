@@ -2,38 +2,35 @@ package cubone
 
 import (
 	"errors"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"strconv"
-)
 
-type GorillaWSServer struct {
-	upgrader *websocket.Upgrader
-}
+	"github.com/gorilla/websocket"
+)
 
 type GorillaWSConnection struct {
 	conn *websocket.Conn
 }
 
-func NewGorillaWSServer(config GorillaWsConfig) (*GorillaWSServer, error) {
-	return &GorillaWSServer{upgrader: &websocket.Upgrader{
+func NewGorillaWSConnFactory(cfg *GorillaWsConfig) WSConnFactory {
+	upgrader := &websocket.Upgrader{
 		HandshakeTimeout:  0,
-		ReadBufferSize:    config.ReadBufferSize,
-		WriteBufferSize:   config.WriteBufferSize,
+		ReadBufferSize:    cfg.ReadBufferSize,
+		WriteBufferSize:   cfg.WriteBufferSize,
 		WriteBufferPool:   nil,
 		Subprotocols:      nil,
 		Error:             nil,
 		CheckOrigin:       nil,
 		EnableCompression: false,
-	}}, nil
-}
-
-func (s *GorillaWSServer) NewConnection(w http.ResponseWriter, r *http.Request) (WebSocketConnection, error) {
-	conn, err := s.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return nil, err
 	}
-	return &GorillaWSConnection{conn: conn}, nil
+
+	return WSConnFactory(func(w http.ResponseWriter, r *http.Request) (WSConnection, error) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &GorillaWSConnection{conn: conn}, nil
+	})
 }
 
 func (c *GorillaWSConnection) Close() error {
@@ -63,4 +60,3 @@ func (c *GorillaWSConnection) Receive() ([]byte, error) {
 	}
 	return data, err
 }
-
