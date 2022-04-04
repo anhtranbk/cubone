@@ -2,24 +2,29 @@ package cubone
 
 import (
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/mux"
 )
 
 type Server struct {
-	server *http.Server
+	server    *http.Server
+	onsiteSvc *OnsiteService
 }
 
-func NewServer(config Config) (*Server, error) {
-	wsServer, err := NewGorillaWSServer(config.GorillaWS)
-	if err != nil {
-		return nil, err
+func NewServer(cfg Config) (*Server, error) {
+	var factory WSConnFactory = nil
+	if cfg.GorillaWS != nil {
+		factory = NewGorillaWSConnFactory(cfg.GorillaWS)
+	}
+	if factory == nil {
+		log.Fatal("ws config must be provided")
 	}
 	h := &handler{
-		wsServer:      wsServer,
-		onsiteService: NewOnsiteServiceFromConfig(config),
-		config: config,
+		cfg:           cfg,
+		wsConnFactory: factory,
+		onsiteSvc:     NewOnsiteServiceFromConfig(cfg),
 	}
 
 	router := mux.NewRouter()
@@ -29,17 +34,18 @@ func NewServer(config Config) (*Server, error) {
 	router.HandleFunc("/ws/internal/onsite/trigger", h.trigger)
 	router.HandleFunc("/demo-client", h.demoClient)
 
-	httpCfg := config.HTTPServer
+	httpCfg := cfg.HTTPServer
 	server := &http.Server{
 		Handler:      router,
 		Addr:         fmt.Sprintf("%s:%d", httpCfg.Address, httpCfg.Port),
 		WriteTimeout: time.Duration(httpCfg.WriteTimeoutInSecond) * time.Second,
 		ReadTimeout:  time.Duration(httpCfg.ReadTimeoutInSecond) * time.Second,
 	}
-	return &Server{server: server}, nil
+	return &Server{server: server, onsiteSvc: h.onsiteSvc}, nil
 }
 
 func (s *Server) Serve() error {
+	s.onsiteSvc.Start()
 	log.Infof("Server started listening at %s", s.server.Addr)
 	return s.server.ListenAndServe()
 }
