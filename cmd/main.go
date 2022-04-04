@@ -1,21 +1,22 @@
 package main
 
 import (
-	"github.com/anhtranbk/cubone"
 	"log"
+
+	"github.com/anhtranbk/cubone"
 )
 
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
 		MessageRetryMaxTimeout: 5,
 		MessageRetryDelay:      5,
-		GorillaWS: cubone.GorillaWsConfig{
+		GorillaWS: &cubone.GorillaWsConfig{
 			ReadBufferSize:  8192,
 			WriteBufferSize: 8192,
 		},
-		HTTPServer: cubone.HTTPServerConfig{
+		HTTPServer: &cubone.HTTPServerConfig{
 			Address:              "localhost",
-			Port: 11053,
+			Port:                 11053,
 			ReadTimeoutInSecond:  5,
 			WriteTimeoutInSecond: 5,
 		},
