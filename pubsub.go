@@ -7,11 +7,13 @@ type PubSubMessage struct {
 
 type Publisher interface {
 	Publish(channel string, data interface{}) error
+	Close() error
 }
 
 type Subscriber interface {
 	Subscribe(channels ...string) error
 	Channel() <-chan *PubSubMessage
+	Close() error
 }
 
 type FakePubSub struct {
@@ -40,5 +42,10 @@ func (f *FakePubSub) Publish(channel string, data interface{}) error {
 		Data:    data,
 	}
 	f.ch <- msg
+	return nil
+}
+
+func (f *FakePubSub) Close() error {
+	log.Info("fake pubsub closed")
 	return nil
 }
