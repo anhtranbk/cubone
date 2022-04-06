@@ -13,9 +13,9 @@ const (
 )
 
 var (
-	InvalidOnsiteMessageErr = errors.New("invalid onsite message")
-	EndpointNotFoundErr     = errors.New("endpoint not found")
-	ServerInternalErr       = errors.New("server internal error")
+	ErrInvalidOnsiteMessage = errors.New("invalid onsite message")
+	ErrEndpointNotFound     = errors.New("endpoint not found")
+	ErrServerInternal       = errors.New("server internal error")
 )
 
 type unAckMessage struct {
@@ -57,16 +57,21 @@ func NewOnsiteServiceFromConfig(cfg Config) *OnsiteService {
 }
 
 func (s *OnsiteService) Start() error {
+	s.cm.Startup()
 	go s.run()
+	log.Info("onsite service started")
 	return nil
 }
 
 func (s *OnsiteService) Shutdown() error {
 	s.doneCh <- struct{}{}
+	s.cm.Shutdown()
+	s.publisher.Close()
+	s.subscriber.Close()
 	return nil
 }
 
-func (s *OnsiteService) ConnectClient(clientId string, ws WebSocketConnection) error {
+func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
 	err := s.cm.Connect(clientId, ws)
 	if err != nil {
 		log.Errorw("could not connect to client", "id", clientId, "error", err)
@@ -95,17 +100,17 @@ func (s *OnsiteService) DisconnectClient(clientId string) error {
 func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 	if msg == nil || msg.Endpoint == "" {
 		log.Warnw("received invalid message", "msg", msg)
-		return InvalidOnsiteMessageErr
+		return ErrInvalidOnsiteMessage
 	}
 
 	found, err := s.cm.IsActiveClient(msg.Endpoint)
 	if err != nil {
 		log.Errorf("checking active client error: %v", err)
-		return ServerInternalErr
+		return ErrServerInternal
 	}
 	if !found {
 		log.Warnw("endpoint not found", "endpoint", msg.Endpoint)
-		return EndpointNotFoundErr
+		return ErrEndpointNotFound
 	}
 
 	if err := s.publisher.Publish(OnsiteChannel, msg); err != nil {
@@ -118,12 +123,14 @@ func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 }
 
 func (s *OnsiteService) run() {
+	defer s.Shutdown()
+
 	wsCh := s.cm.MessageChannel()
 	psCh := s.subscriber.Channel()
 	for {
 		select {
 		case <-s.doneCh:
-			break
+			return
 		case msg := <-wsCh:
 			s.handleWSMessage(msg)
 		case msg := <-psCh:
@@ -161,7 +168,7 @@ func (s *OnsiteService) onDeliveryMessage(msg *DeliveryMessage) {
 	s.unAckMessages[msgId] = &unAckMessage{
 		data:     msg.Data,
 		clientId: msg.Endpoint,
-		timeout:  time.Now().Add(time.Duration(s.cfg.MessageRetryMaxTimeout)),
+		timeout:  time.Now().Add(s.cfg.MessageRetryMaxTimeout),
 	}
 }
 
