@@ -3,8 +3,8 @@ package cubone
 import "time"
 
 type Config struct {
-	MessageRetryMaxTimeout int64
-	MessageRetryDelay      int64
+	MessageRetryMaxTimeout time.Duration
+	MessageRetryDelay      time.Duration
 	ConnectionTimeout      time.Duration
 	GorillaWS              *GorillaWsConfig
 	HTTPServer             *HTTPServerConfig

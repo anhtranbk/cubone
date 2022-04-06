@@ -2,14 +2,16 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/anhtranbk/cubone"
 )
 
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
-		MessageRetryMaxTimeout: 5,
-		MessageRetryDelay:      5,
+		MessageRetryMaxTimeout: time.Second * 120,
+		MessageRetryDelay:      time.Second * 5,
+		ConnectionTimeout:      time.Second * 10,
 		GorillaWS: &cubone.GorillaWsConfig{
 			ReadBufferSize:  8192,
 			WriteBufferSize: 8192,
@@ -22,7 +24,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalln("Server error", err.Error())
+		log.Fatalln("server error", err.Error())
 	}
 
 	log.Fatal(server.Serve())
