@@ -33,17 +33,6 @@ type OnsiteService struct {
 	doneCh        chan struct{}
 }
 
-func NewOnsiteService(cm *ClientManager, pub Publisher, sub Subscriber) *OnsiteService {
-	return &OnsiteService{
-		cfg:           &Config{},
-		cm:            cm,
-		publisher:     pub,
-		subscriber:    sub,
-		unAckMessages: make(map[string]*unAckMessage),
-		doneCh:        make(chan struct{}),
-	}
-}
-
 func NewOnsiteServiceFromConfig(cfg Config) *OnsiteService {
 	pubsub := NewFakePubSub()
 	return &OnsiteService{
@@ -52,12 +41,16 @@ func NewOnsiteServiceFromConfig(cfg Config) *OnsiteService {
 		publisher:     pubsub,
 		subscriber:    pubsub,
 		unAckMessages: make(map[string]*unAckMessage),
-		doneCh:        make(chan struct{}),
+		doneCh:        make(chan struct{}, 1),
 	}
 }
 
 func (s *OnsiteService) Start() error {
-	s.cm.Startup()
+	if err := s.cm.Startup(); err != nil {
+		log.Errorf("start client manager error: %v", err)
+		return ErrServerInternal
+	}
+
 	go s.run()
 	log.Info("onsite service started")
 	return nil
@@ -65,9 +58,9 @@ func (s *OnsiteService) Start() error {
 
 func (s *OnsiteService) Shutdown() error {
 	s.doneCh <- struct{}{}
-	s.cm.Shutdown()
-	s.publisher.Close()
-	s.subscriber.Close()
+	_ = s.cm.Shutdown()
+	_ = s.publisher.Close()
+	_ = s.subscriber.Close()
 	return nil
 }
 
@@ -123,7 +116,9 @@ func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 }
 
 func (s *OnsiteService) run() {
-	defer s.Shutdown()
+	defer func(s *OnsiteService) {
+		_ = s.Shutdown()
+	}(s)
 
 	wsCh := s.cm.MessageChannel()
 	psCh := s.subscriber.Channel()

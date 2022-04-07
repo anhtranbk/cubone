@@ -46,6 +46,6 @@ func NewServer(cfg Config) (*Server, error) {
 
 func (s *Server) Serve() error {
 	s.onsiteSvc.Start()
-	log.Infof("server started listening at %s", s.server.Addr)
+	log.Infof("http server started listening at %s", s.server.Addr)
 	return s.server.ListenAndServe()
 }
