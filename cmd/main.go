@@ -18,7 +18,7 @@ func main() {
 		},
 		HTTPServer: &cubone.HTTPServerConfig{
 			Address:      "localhost",
-			Port:         11053,
+			Port:         11888,
 			ReadTimeout:  time.Second * 5,
 			WriteTimeout: time.Second * 5,
 		},
