@@ -16,14 +16,6 @@ var (
 	ErrOperationTimeout   = errors.New("operation timeout")
 )
 
-type ClientStatusListener interface {
-	OnConnected(clientId string)
-	OnDisconnected(clientId string)
-	OnError(clientId string)
-}
-
-type MessageHandler func(clientId string, data interface{}) error
-
 type connectRequest struct {
 	resCh    chan error
 	conn     WSConnection
@@ -36,26 +28,28 @@ type disconnectRequest struct {
 }
 
 type ClientManager struct {
-	ID           string
-	cfg          Config
-	clients      map[string]*Client
-	totalClients *atomic.Int32
-	doneCh       chan struct{}
-	clientMsgCh  chan *WSClientMessage
-	connectCh    chan *connectRequest
-	disconnectCh chan *disconnectRequest
+	ID            string
+	cfg           Config
+	clients       map[string]*Client
+	totalClients  *atomic.Int32
+	doneCh        chan struct{}
+	clientMsgCh   chan *WSClientMessage
+	connectCh     chan *connectRequest
+	disconnectCh  chan *disconnectRequest
+	stateChangeCh chan stateChange
 }
 
 func NewClientManager(cfg Config) *ClientManager {
 	cm := &ClientManager{
-		ID:           uuid.NewString(),
-		cfg:          cfg,
-		clients:      map[string]*Client{},
-		totalClients: atomic.NewInt32(0),
-		doneCh:       make(chan struct{}),
-		clientMsgCh:  make(chan *WSClientMessage),
-		connectCh:    make(chan *connectRequest),
-		disconnectCh: make(chan *disconnectRequest),
+		ID:            uuid.NewString(),
+		cfg:           cfg,
+		clients:       map[string]*Client{},
+		totalClients:  atomic.NewInt32(0),
+		doneCh:        make(chan struct{}, 1),
+		clientMsgCh:   make(chan *WSClientMessage, 1024),
+		connectCh:     make(chan *connectRequest, 256),
+		disconnectCh:  make(chan *disconnectRequest, 256),
+		stateChangeCh: make(chan stateChange, 256),
 	}
 	log.Infow("clientManager initialized", "id", cm.ID)
 	return cm
@@ -101,7 +95,14 @@ func (cm *ClientManager) run() {
 		case req := <-cm.connectCh:
 			req.resCh <- cm.doConnect(req.clientId, req.conn)
 		case req := <-cm.disconnectCh:
-			req.resCh <- cm.doDisconnect(req.clientId)
+			err := cm.doDisconnect(req.clientId)
+			if req.resCh != nil {
+				req.resCh <- err
+			}
+		case change := <-cm.stateChangeCh:
+			if change.state == Disconnected {
+				_ = cm.doDisconnect(change.clientId)
+			}
 		}
 	}
 }
@@ -131,10 +132,11 @@ func (cm *ClientManager) doConnect(clientId string, ws WSConnection) error {
 		return ErrClientIdDuplicated
 	}
 
-	client := NewClient(clientId, ws, cm.clientMsgCh)
+	client := NewClient(clientId, ws, cm.clientMsgCh, cm.stateChangeCh)
 	cm.clients[clientId] = client
 	cm.totalClients.Inc()
 	log.Infow("client connected", "id", clientId)
+	log.Infof("total client: %v", cm.totalClients)
 
 	return client.startup()
 }
@@ -150,20 +152,19 @@ func (cm *ClientManager) Disconnect(clientId string) error {
 }
 
 func (cm *ClientManager) doDisconnect(clientId string) error {
-	log.Debugw("disconnecting client ...", "id", clientId)
+	log.Debugw("disconnecting client...", "id", clientId)
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("could not disconnect client, client not found", "id", clientId)
 		return ErrClientNotFound
 	}
 
-	err := client.wsConn.Close()
-	if err == nil {
-		delete(cm.clients, clientId)
-		cm.totalClients.Dec()
-		log.Infow("client disconnected", "id", clientId)
-	}
-	return err
+	delete(cm.clients, clientId)
+	cm.totalClients.Dec()
+	client.close()
+	log.Infof("client disconnected: %v", clientId)
+
+	return client.close()
 }
 
 func (cm *ClientManager) SendMessage(clientId string, message interface{}) error {
@@ -175,23 +176,20 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 	}
 
 	var err error
-	if client.closed.Load() {
+	if client.isClosed() {
 		return ErrClientDisconnected
 	}
+
 	if b, ok := message.([]byte); ok {
 		client.write(b)
 	} else if s, ok := message.(string); ok {
 		client.write([]byte(s))
-	} else {
-		b, err = json.Marshal(message)
+	} else if b, err := json.Marshal(message); err == nil {
 		client.write(b)
 	}
 
 	if err != nil {
-		// Normally this error occurs when handler are trying to send data to a closed connection.
-		// TODO: We should disconnect and remove this client ?
 		log.Errorw("error occurred while sending message to client", "error", err.Error())
-		_ = cm.Disconnect(clientId)
 	}
 	return err
 }

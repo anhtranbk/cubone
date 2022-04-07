@@ -6,26 +6,42 @@ import (
 	"go.uber.org/atomic"
 )
 
+type clientState int8
+
+type stateChange struct {
+	clientId string
+	state    clientState
+}
+
+// we do not use all of these values here, reversed for the future
+// when we need something more complicated such as monitoring
+const (
+	Created      clientState = 0
+	Connected    clientState = 1
+	Disconnected clientState = 2
+	Error        clientState = 3
+)
+
 type Client struct {
 	ID      string
-	wsConn  WSConnection
-	readCh  chan<- *WSClientMessage
+	ws      WSConnection
 	writeCh chan []byte
+	readCh  chan<- *WSClientMessage
+	stateCh chan<- stateChange
 	done    chan struct{}
 	closed  *atomic.Bool
 }
 
-func NewClient(id string, wsConn WSConnection, readCh chan<- *WSClientMessage) *Client {
-	client := &Client{
+func NewClient(id string, ws WSConnection, rCh chan<- *WSClientMessage, sCh chan<- stateChange) *Client {
+	return &Client{
 		ID:      id,
-		wsConn:  wsConn,
-		readCh:  readCh,
-		writeCh: make(chan []byte),
-		done:    make(chan struct{}),
+		ws:      ws,
+		writeCh: make(chan []byte, 128),
+		readCh:  rCh,
+		stateCh: sCh,
+		done:    make(chan struct{}, 1),
 		closed:  atomic.NewBool(false),
 	}
-
-	return client
 }
 
 func (c *Client) startup() error {
@@ -35,15 +51,28 @@ func (c *Client) startup() error {
 	return nil
 }
 
+func (c *Client) isClosed() bool {
+	return c.closed.Load()
+}
+
 func (c *Client) write(msg []byte) {
 	c.writeCh <- msg
 }
 
 func (c *Client) close() error {
+	// make sure client only close once
 	if c.closed.CAS(false, true) {
+		// notify read goroutine to be stopped
 		c.done <- struct{}{}
+		// notify write goroutine to be stopped
 		close(c.writeCh)
-		return c.wsConn.Close()
+		// notify client manager to remove this client
+		c.stateCh <- stateChange{
+			clientId: c.ID,
+			state:    Disconnected,
+		}
+		// close underlying websocket connection
+		return c.ws.Close()
 	}
 	return nil
 }
@@ -51,7 +80,7 @@ func (c *Client) close() error {
 func (c *Client) processWrite() {
 	defer c.close()
 	for data := range c.writeCh {
-		if err := c.wsConn.Send(data); err != nil {
+		if err := c.ws.Send(data); err != nil {
 			// Normally this error occurs when handler are trying to send data to a closed connection.
 			// TODO: We should disconnect and remove this client ?
 			log.Errorw("error while sending message to client", "clientId", c.ID, "error", err.Error())
@@ -67,10 +96,10 @@ func (c *Client) processRead() {
 		case <-c.done:
 			return
 		default:
-			b, err := c.wsConn.Receive()
+			b, err := c.ws.Receive()
 			if err != nil {
 				log.Errorf("reading from ws error: %v", err)
-				break
+				return
 			}
 
 			msg, err := c.parseClientMessage(b)
