@@ -38,8 +38,8 @@ func NewServer(cfg Config) (*Server, error) {
 	server := &http.Server{
 		Handler:      router,
 		Addr:         fmt.Sprintf("%s:%d", httpCfg.Address, httpCfg.Port),
-		WriteTimeout: time.Duration(httpCfg.WriteTimeoutInSecond) * time.Second,
-		ReadTimeout:  time.Duration(httpCfg.ReadTimeoutInSecond) * time.Second,
+		WriteTimeout: time.Duration(httpCfg.WriteTimeout) * time.Second,
+		ReadTimeout:  time.Duration(httpCfg.ReadTimeout) * time.Second,
 	}
 	return &Server{server: server, onsiteSvc: h.onsiteSvc}, nil
 }

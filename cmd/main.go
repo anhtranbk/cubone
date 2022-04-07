@@ -9,7 +9,7 @@ import (
 
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
-		MessageRetryMaxTimeout: time.Second * 120,
+		MessageRetryMaxTimeout: time.Second * 60,
 		MessageRetryDelay:      time.Second * 5,
 		ConnectionTimeout:      time.Second * 10,
 		GorillaWS: &cubone.GorillaWsConfig{
@@ -17,10 +17,10 @@ func main() {
 			WriteBufferSize: 8192,
 		},
 		HTTPServer: &cubone.HTTPServerConfig{
-			Address:              "localhost",
-			Port:                 11053,
-			ReadTimeoutInSecond:  5,
-			WriteTimeoutInSecond: 5,
+			Address:      "localhost",
+			Port:         11053,
+			ReadTimeout:  time.Second * 5,
+			WriteTimeout: time.Second * 5,
 		},
 	})
 	if err != nil {
