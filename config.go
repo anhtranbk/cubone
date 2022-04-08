@@ -1,18 +1,27 @@
 package cubone
 
-import "time"
+import (
+	"time"
+
+	"github.com/go-redis/redis"
+)
 
 type Config struct {
+	// app configuration
 	MessageRetryMaxTimeout time.Duration
 	MessageRetryDelay      time.Duration
 	ConnectionTimeout      time.Duration
-	GorillaWS              *GorillaWsConfig
-	HTTPServer             *HTTPServerConfig
+	RedisAddr              string
+
+	// module specified configurations
+	GorillaWS  *GorillaWsConfig
+	HTTPServer *HTTPServerConfig
+	Redis      *RedisConfig
 }
 
 type GorillaWsConfig struct {
-	ReadBufferSize  uint32
-	WriteBufferSize uint32
+	ReadBufferSize  int
+	WriteBufferSize int
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 }
@@ -22,4 +31,9 @@ type HTTPServerConfig struct {
 	Port         uint16
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+}
+
+type RedisConfig struct {
+	RedisOptions        *redis.Options
+	RedisClusterOptions *redis.ClusterOptions
 }

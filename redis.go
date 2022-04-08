@@ -2,6 +2,7 @@ package cubone
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/go-redis/redis"
@@ -12,35 +13,50 @@ type RedisPubSub struct {
 	ch     chan *PubSubMessage
 }
 
-type RedisConfig struct {
-	RedisOptions        *redis.Options
-	RedisClusterOptions *redis.ClusterOptions
-}
-
-func NewRedisPubSubFromConnStr(connStr string) (*RedisPubSub, error) {
-	parts := strings.Split(connStr, ",")
+func NewRedisPubSubFromAddrStr(addrStr string) (*RedisPubSub, error) {
+	addrs := strings.Split(addrStr, ",")
 	var client redis.UniversalClient
-	if len(parts) > 1 {
-		client = redis.NewClusterClient(&redis.ClusterOptions{Addrs: parts})
+	if len(addrs) > 1 {
+		client = redis.NewClusterClient(&redis.ClusterOptions{Addrs: addrs})
 	} else {
-		client = redis.NewClient(&redis.Options{Addr: parts[0]})
+		client = redis.NewClient(&redis.Options{Addr: addrs[0]})
 	}
+
+	if err := verifyClient(client); err != nil {
+		return nil, fmt.Errorf("failed to verify client: %v", err)
+	}
+
+	log.Infof("connected to redis at: %v", addrs)
 	return &RedisPubSub{
 		client: client,
-		ch:     nil,
+		ch:     make(chan *PubSubMessage, 1024),
 	}, nil
 }
 
 func NewRedisPubSub(cfg *RedisConfig) (*RedisPubSub, error) {
-	r := &RedisPubSub{client: nil}
+	var client redis.UniversalClient
 	if cfg.RedisOptions != nil {
-		r.client = redis.NewClient(cfg.RedisOptions)
+		client = redis.NewClient(cfg.RedisOptions)
 	} else if cfg.RedisClusterOptions != nil {
-		r.client = redis.NewClusterClient(cfg.RedisClusterOptions)
+		client = redis.NewClusterClient(cfg.RedisClusterOptions)
 	} else {
 		return nil, errors.New("at least one redis options must be provided")
 	}
-	return r, nil
+
+	if err := verifyClient(client); err != nil {
+		return nil, fmt.Errorf("failed to verify client: %v", err)
+	}
+
+	if cfg.RedisClusterOptions != nil {
+		log.Info("connected to single redis instance at: %s", cfg.RedisClusterOptions.Addrs)
+	} else {
+		log.Info("connected to redis cluster at: %s", cfg.RedisClusterOptions.Addrs)
+	}
+
+	return &RedisPubSub{
+		client: client,
+		ch:     make(chan *PubSubMessage, 1024),
+	}, nil
 }
 
 func (r *RedisPubSub) Subscribe(channels ...string) error {
@@ -75,4 +91,8 @@ func (r *RedisPubSub) Close() error {
 		return err
 	}
 	return nil
+}
+
+func verifyClient(client redis.UniversalClient) error {
+	return client.Ping().Err()
 }

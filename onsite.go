@@ -33,7 +33,25 @@ type OnsiteService struct {
 }
 
 func NewOnsiteService(cfg Config) *OnsiteService {
-	pubsub := NewFakePubSub()
+	var (
+		pubsub PubSub = nil
+		err    error
+	)
+
+	if cfg.RedisAddr != "" {
+		pubsub, _ = NewRedisPubSubFromAddrStr(cfg.RedisAddr)
+	} else if cfg.Redis != nil {
+		pubsub, err = NewRedisPubSub(cfg.Redis)
+	}
+
+	if err != nil {
+		log.Fatalw("could not create Redis from config", "cfg", cfg.Redis, "error", err)
+		return nil
+	}
+	if pubsub == nil {
+		pubsub = NewFakePubSub()
+		log.Info("no real pubsub service configured, use in-memory fake-pubsub instead")
+	}
 
 	return &OnsiteService{
 		cfg:           &cfg,
