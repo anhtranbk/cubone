@@ -5,12 +5,8 @@ type PubSubMessage struct {
 	Data    interface{}
 }
 
-type Publisher interface {
+type PubSub interface {
 	Publish(channel string, data interface{}) error
-	Close() error
-}
-
-type Subscriber interface {
 	Subscribe(channels ...string) error
 	Channel() <-chan *PubSubMessage
 	Close() error

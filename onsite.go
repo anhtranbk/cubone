@@ -27,19 +27,18 @@ type unAckMessage struct {
 type OnsiteService struct {
 	cfg           *Config
 	cm            *ClientManager
-	publisher     Publisher
-	subscriber    Subscriber
+	pubsub        PubSub
 	unAckMessages map[string]*unAckMessage
 	doneCh        chan struct{}
 }
 
-func NewOnsiteServiceFromConfig(cfg Config) *OnsiteService {
+func NewOnsiteService(cfg Config) *OnsiteService {
 	pubsub := NewFakePubSub()
+
 	return &OnsiteService{
 		cfg:           &cfg,
 		cm:            NewClientManager(cfg),
-		publisher:     pubsub,
-		subscriber:    pubsub,
+		pubsub:        pubsub,
 		unAckMessages: make(map[string]*unAckMessage),
 		doneCh:        make(chan struct{}, 1),
 	}
@@ -59,8 +58,7 @@ func (s *OnsiteService) Start() error {
 func (s *OnsiteService) Shutdown() error {
 	s.doneCh <- struct{}{}
 	_ = s.cm.Shutdown()
-	_ = s.publisher.Close()
-	_ = s.subscriber.Close()
+	_ = s.pubsub.Close()
 	return nil
 }
 
@@ -70,7 +68,7 @@ func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
 		log.Errorw("could not connect to client", "id", clientId, "error", err)
 		return err
 	}
-	err = s.publisher.Publish(MembershipChannel, &MembershipMessage{
+	err = s.pubsub.Publish(MembershipChannel, &MembershipMessage{
 		ClientId: clientId,
 		OwnerId:  s.cm.ID,
 	})
@@ -106,7 +104,7 @@ func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 		return ErrEndpointNotFound
 	}
 
-	if err := s.publisher.Publish(OnsiteChannel, msg); err != nil {
+	if err := s.pubsub.Publish(OnsiteChannel, msg); err != nil {
 		log.Errorf("could not publish message: %v", err)
 		return err
 	}
@@ -121,7 +119,7 @@ func (s *OnsiteService) run() {
 	}(s)
 
 	wsCh := s.cm.MessageChannel()
-	psCh := s.subscriber.Channel()
+	psCh := s.pubsub.Channel()
 	for {
 		select {
 		case <-s.doneCh:

@@ -18,13 +18,14 @@ func NewServer(cfg Config) (*Server, error) {
 	if cfg.GorillaWS != nil {
 		factory = NewGorillaWSConnFactory(cfg.GorillaWS)
 	}
+
 	if factory == nil {
 		log.Fatal("ws config must be provided")
 	}
 	h := &handler{
 		cfg:           cfg,
 		wsConnFactory: factory,
-		onsiteSvc:     NewOnsiteServiceFromConfig(cfg),
+		onsiteSvc:     NewOnsiteService(cfg),
 	}
 
 	router := mux.NewRouter()
