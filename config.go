@@ -8,10 +8,10 @@ import (
 
 type Config struct {
 	// app configuration
-	MessageRetryMaxTimeout time.Duration
-	MessageRetryDelay      time.Duration
-	ConnectionTimeout      time.Duration
-	RedisAddr              string
+	MessageRetryTimeout  time.Duration
+	MessageRetryInterval time.Duration
+	ConnectionTimeout    time.Duration
+	RedisAddr            string
 
 	// module specified configurations
 	GorillaWS  *GorillaWsConfig

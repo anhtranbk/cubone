@@ -10,10 +10,10 @@ import (
 
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
-		MessageRetryMaxTimeout: time.Second * 60,
-		MessageRetryDelay:      time.Second * 5,
-		ConnectionTimeout:      time.Second * 10,
-		RedisAddr:              os.Getenv("REDIS_ADDRESS"),
+		MessageRetryTimeout:  time.Second * 60,
+		MessageRetryInterval: time.Second * 2,
+		ConnectionTimeout:    time.Second * 5,
+		RedisAddr:            os.Getenv("REDIS_ADDRESS"),
 		GorillaWS: &cubone.GorillaWsConfig{
 			ReadBufferSize:  8192,
 			WriteBufferSize: 8192,

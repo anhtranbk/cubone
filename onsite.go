@@ -19,17 +19,18 @@ var (
 )
 
 type unAckMessage struct {
-	data     interface{}
-	clientId string
-	timeout  time.Time
+	data      interface{}
+	clientId  string
+	createdAt time.Time
 }
 
 type OnsiteService struct {
 	cfg           *Config
 	cm            *ClientManager
 	pubsub        PubSub
-	unAckMessages map[string]*unAckMessage
 	doneCh        chan struct{}
+	unAckMessages map[string]*unAckMessage
+	buf           []string
 }
 
 func NewOnsiteService(cfg Config) *OnsiteService {
@@ -57,8 +58,9 @@ func NewOnsiteService(cfg Config) *OnsiteService {
 		cfg:           &cfg,
 		cm:            NewClientManager(cfg),
 		pubsub:        pubsub,
-		unAckMessages: make(map[string]*unAckMessage),
 		doneCh:        make(chan struct{}, 1),
+		unAckMessages: make(map[string]*unAckMessage),
+		buf:           make([]string, 8192),
 	}
 }
 
@@ -83,16 +85,17 @@ func (s *OnsiteService) Shutdown() error {
 func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
 	err := s.cm.Connect(clientId, ws)
 	if err != nil {
-		log.Errorw("could not connect to client", "id", clientId, "error", err)
+		log.Errorw("could not connect to client", "clientId", clientId, "error", err)
 		return err
 	}
+
 	err = s.pubsub.Publish(MembershipChannel, &MembershipMessage{
 		ClientId: clientId,
 		OwnerId:  s.cm.ID,
 	})
 	if err != nil {
 		log.Errorw("could not publish message to pub/sub handler, maybe the connection lost. "+
-			"Refuse to create new WebSocket connection", "id", clientId)
+			"Refuse to create new WebSocket connection", "clientId", clientId, "error", err)
 		_ = s.DisconnectClient(clientId)
 	}
 	return err
@@ -101,7 +104,7 @@ func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
 func (s *OnsiteService) DisconnectClient(clientId string) error {
 	err := s.cm.Disconnect(clientId)
 	if err != nil {
-		log.Errorw("could not disconnect to client", "id", clientId)
+		log.Errorw("could not disconnect to client", "clientId", clientId)
 	}
 	return err
 }
@@ -138,6 +141,8 @@ func (s *OnsiteService) run() {
 
 	wsCh := s.cm.MessageChannel()
 	psCh := s.pubsub.Channel()
+	ticker := time.NewTicker(s.cfg.MessageRetryInterval)
+
 	for {
 		select {
 		case <-s.doneCh:
@@ -146,6 +151,8 @@ func (s *OnsiteService) run() {
 			s.handleWSMessage(msg)
 		case msg := <-psCh:
 			s.handlePubSubMessage(msg)
+		case <-ticker.C:
+			s.onResendUnAckMessages()
 		}
 	}
 }
@@ -177,9 +184,9 @@ func (s *OnsiteService) onDeliveryMessage(msg *DeliveryMessage) {
 	}
 
 	s.unAckMessages[msgId] = &unAckMessage{
-		data:     msg.Data,
-		clientId: msg.Endpoint,
-		timeout:  time.Now().Add(s.cfg.MessageRetryMaxTimeout),
+		data:      msg.Data,
+		clientId:  msg.Endpoint,
+		createdAt: time.Now().Add(s.cfg.MessageRetryTimeout),
 	}
 }
 
@@ -205,6 +212,38 @@ func (s *OnsiteService) onAckMessage(msg *AckMessage) {
 		delete(s.unAckMessages, msg.ID)
 		log.Debugw("message handled by client", "messageId", msg.ID)
 	}
+}
+
+func (s *OnsiteService) onResendUnAckMessages() {
+	if len(s.unAckMessages) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for id, msg := range s.unAckMessages {
+		if now.Before(msg.createdAt.Add(s.cfg.MessageRetryInterval)) { // prevent messages from being resent too quickly
+			continue
+		} else if now.After(msg.createdAt.Add(s.cfg.MessageRetryTimeout)) {
+			s.buf = append(s.buf, id)
+		} else if !s.cm.IsLocalActiveClient(msg.clientId) {
+			// could not send message to target client due to client was disconnected
+			// we will not not discard the message here and try to deliver message at next
+			log.Debug("could not send un-ack message to a disconnect client", "clientId", msg.clientId)
+		} else {
+			log.Debugw("re-sending un-ack message to client", "msgId", id, "clientId", msg.clientId)
+			if err := s.sendMessage(msg.clientId, id, msg.data); err != nil {
+				log.Errorf("error while sending un-ack message to client: %v", err)
+			}
+		}
+	}
+
+	for _, id := range s.buf {
+		delete(s.unAckMessages, id)
+		log.Infow("un-ack message removed due to exceeded timeout", "id", id)
+	}
+	log.Infof("%d un-ack messages were removed", len(s.buf))
+	// clear buffer
+	s.buf = s.buf[:0]
 }
 
 func (s *OnsiteService) sendMessage(clientId string, msgId string, data interface{}) error {
