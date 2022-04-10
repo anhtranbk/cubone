@@ -1,7 +1,6 @@
 package cubone
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -166,38 +165,27 @@ func (cm *ClientManager) doDisconnect(clientId string) error {
 	return client.close()
 }
 
-func (cm *ClientManager) SendMessage(clientId string, v interface{}) error {
-	log.Debugw("sending message to client", "id", clientId, "message", v)
+func (cm *ClientManager) SendMessage(clientId string, payload []byte) error {
+	log.Debugw("sending message to client", "id", clientId, "message", string(payload))
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("client was not found", "id", clientId)
 		return ErrClientNotFound
 	}
 
-	var err error
 	if client.isClosed() {
+		log.Errorw("could not send message to closed client", "id", clientId)
 		return ErrClientDisconnected
 	}
 
-	if b, ok := v.([]byte); ok {
-		client.write(b)
-	} else if s, ok := v.(string); ok {
-		client.write([]byte(s))
-	} else if b, err := json.Marshal(v); err == nil {
-		client.write(b)
-	}
-
-	if err != nil {
-		log.Errorw("error occurred while sending message to client", "error", err)
-	}
-	return err
+	client.write(payload)
+	return nil
 }
 
-func (cm *ClientManager) Broadcast(message interface{}) error {
+func (cm *ClientManager) Broadcast(payload []byte) error {
 	var err error
 	for clientId := range cm.clients {
-		err = cm.SendMessage(clientId, message)
-		if err != nil {
+		if err = cm.SendMessage(clientId, payload); err != nil {
 			return err
 		}
 	}
