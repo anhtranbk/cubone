@@ -1,10 +1,15 @@
 package cubone
 
+type WSClientRequest struct {
+	ClientId string
+	Payload  []byte
+}
+
 // WSClientMessage client request message
 type WSClientMessage struct {
-	ClientId string
-	Type     string      `json:"type"`
-	Data     interface{} `json:"data"`
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+	Ack  *AckMessage
 }
 
 // WSServerMessage handler response message
@@ -43,12 +48,4 @@ func NewMembershipMessage(msg *PubSubMessage) *MembershipMessage {
 		ClientId: data["client_id"].(string),
 		OwnerId:  data["owner_id"].(string),
 	}
-}
-
-func NewAckMessage(msg *WSClientMessage) (*AckMessage, error) {
-	// TODO: add error handling
-	data, _ := msg.Data.(map[string]interface{})
-	return &AckMessage{
-		ID: data["id"].(string),
-	}, nil
 }

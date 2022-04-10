@@ -1,8 +1,6 @@
 package cubone
 
 import (
-	"encoding/json"
-
 	"go.uber.org/atomic"
 )
 
@@ -26,13 +24,13 @@ type Client struct {
 	ID      string
 	ws      WSConnection
 	writeCh chan []byte
-	readCh  chan<- *WSClientMessage
+	readCh  chan<- *WSClientRequest
 	stateCh chan<- stateChange
 	done    chan struct{}
 	closed  *atomic.Bool
 }
 
-func NewClient(id string, ws WSConnection, rCh chan<- *WSClientMessage, sCh chan<- stateChange) *Client {
+func NewClient(id string, ws WSConnection, rCh chan<- *WSClientRequest, sCh chan<- stateChange) *Client {
 	return &Client{
 		ID:      id,
 		ws:      ws,
@@ -55,8 +53,8 @@ func (c *Client) isClosed() bool {
 	return c.closed.Load()
 }
 
-func (c *Client) write(msg []byte) {
-	c.writeCh <- msg
+func (c *Client) write(payload []byte) {
+	c.writeCh <- payload
 }
 
 func (c *Client) close() error {
@@ -77,18 +75,19 @@ func (c *Client) close() error {
 	return nil
 }
 
+//goland:noinspection GoUnhandledErrorResult
 func (c *Client) processWrite() {
 	defer c.close()
 	for data := range c.writeCh {
 		if err := c.ws.Send(data); err != nil {
 			// Normally this error occurs when handler are trying to send data to a closed connection.
-			// TODO: We should disconnect and remove this client ?
 			log.Errorw("error while sending message to client", "clientId", c.ID, "error", err.Error())
 			break
 		}
 	}
 }
 
+//goland:noinspection GoUnhandledErrorResult
 func (c *Client) processRead() {
 	defer c.close()
 	for {
@@ -102,25 +101,7 @@ func (c *Client) processRead() {
 				return
 			}
 
-			msg, err := c.parseClientMessage(b)
-			if err != nil {
-				log.Warnf("received malformed message: %v", err)
-				continue
-			}
-
-			log.Debugw("received websocket message", "clientId", c.ID, "msg", msg)
-			c.readCh <- msg
+			c.readCh <- &WSClientRequest{ClientId: c.ID, Payload: b}
 		}
 	}
-}
-
-func (c *Client) parseClientMessage(b []byte) (*WSClientMessage, error) {
-	var msg WSClientMessage
-	err := json.Unmarshal(b, &msg)
-	if err != nil {
-		return nil, err
-	}
-
-	msg.ClientId = c.ID
-	return &msg, nil
 }

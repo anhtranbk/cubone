@@ -33,10 +33,11 @@ type ClientManager struct {
 	clients       map[string]*Client
 	totalClients  *atomic.Int32
 	doneCh        chan struct{}
-	clientMsgCh   chan *WSClientMessage
+	clientMsgCh   chan *WSClientRequest
 	connectCh     chan *connectRequest
 	disconnectCh  chan *disconnectRequest
 	stateChangeCh chan stateChange
+	msgCodec      MessageCodec
 }
 
 func NewClientManager(cfg Config) *ClientManager {
@@ -46,10 +47,11 @@ func NewClientManager(cfg Config) *ClientManager {
 		clients:       map[string]*Client{},
 		totalClients:  atomic.NewInt32(0),
 		doneCh:        make(chan struct{}, 1),
-		clientMsgCh:   make(chan *WSClientMessage, 1024),
+		clientMsgCh:   make(chan *WSClientRequest, 1024),
 		connectCh:     make(chan *connectRequest, 256),
 		disconnectCh:  make(chan *disconnectRequest, 256),
 		stateChangeCh: make(chan stateChange, 256),
+		msgCodec:      NewDefaultCodec(),
 	}
 	log.Infow("clientManager initialized", "id", cm.ID)
 	return cm
@@ -152,23 +154,20 @@ func (cm *ClientManager) Disconnect(clientId string) error {
 }
 
 func (cm *ClientManager) doDisconnect(clientId string) error {
-	log.Debugw("disconnecting client...", "id", clientId)
 	client, found := cm.clients[clientId]
 	if !found {
-		log.Warnw("could not disconnect client, client not found", "id", clientId)
 		return ErrClientNotFound
 	}
 
 	delete(cm.clients, clientId)
 	cm.totalClients.Dec()
-	client.close()
 	log.Infof("client disconnected: %v", clientId)
 
 	return client.close()
 }
 
-func (cm *ClientManager) SendMessage(clientId string, message interface{}) error {
-	log.Debugw("sending message", "id", clientId, "message", message)
+func (cm *ClientManager) SendMessage(clientId string, v interface{}) error {
+	log.Debugw("sending message to client", "id", clientId, "message", v)
 	client, found := cm.clients[clientId]
 	if !found {
 		log.Warnw("client was not found", "id", clientId)
@@ -180,16 +179,16 @@ func (cm *ClientManager) SendMessage(clientId string, message interface{}) error
 		return ErrClientDisconnected
 	}
 
-	if b, ok := message.([]byte); ok {
+	if b, ok := v.([]byte); ok {
 		client.write(b)
-	} else if s, ok := message.(string); ok {
+	} else if s, ok := v.(string); ok {
 		client.write([]byte(s))
-	} else if b, err := json.Marshal(message); err == nil {
+	} else if b, err := json.Marshal(v); err == nil {
 		client.write(b)
 	}
 
 	if err != nil {
-		log.Errorw("error occurred while sending message to client", "error", err.Error())
+		log.Errorw("error occurred while sending message to client", "error", err)
 	}
 	return err
 }
@@ -205,7 +204,7 @@ func (cm *ClientManager) Broadcast(message interface{}) error {
 	return nil
 }
 
-func (cm *ClientManager) MessageChannel() <-chan *WSClientMessage {
+func (cm *ClientManager) MessageChannel() <-chan *WSClientRequest {
 	return cm.clientMsgCh
 }
 
