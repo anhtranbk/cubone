@@ -10,6 +10,8 @@ require (
 )
 
 require (
+	github.com/go-redis/redis v6.15.9+incompatible // indirect
 	go.uber.org/atomic v1.7.0
 	go.uber.org/multierr v1.8.0 // indirect
+	gopkg.in/redis.v6 v6.15.9 // indirect
 )
