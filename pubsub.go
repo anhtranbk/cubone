@@ -2,11 +2,11 @@ package cubone
 
 type PubSubMessage struct {
 	Channel string
-	Data    interface{}
+	Payload []byte
 }
 
 type PubSub interface {
-	Publish(channel string, data interface{}) error
+	Publish(channel string, data []byte) error
 	Subscribe(channels ...string) error
 	Channel() <-chan *PubSubMessage
 	Close() error
@@ -31,11 +31,11 @@ func (f *FakePubSub) Channel() <-chan *PubSubMessage {
 	return f.ch
 }
 
-func (f *FakePubSub) Publish(channel string, data interface{}) error {
-	log.Debugw("message published", "channel", channel, "data", data)
+func (f *FakePubSub) Publish(channel string, data []byte) error {
+	log.Debugw("message published", "channel", channel, "data", string(data))
 	msg := &PubSubMessage{
 		Channel: channel,
-		Data:    data,
+		Payload: data,
 	}
 	f.ch <- msg
 	return nil

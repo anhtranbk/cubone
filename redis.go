@@ -69,7 +69,7 @@ func (r *RedisPubSub) Subscribe(channels ...string) error {
 		for msg := range pubsub.Channel() {
 			pubsubMsg := &PubSubMessage{
 				Channel: msg.Channel,
-				Data:    msg.Payload,
+				Payload: []byte(msg.Payload),
 			}
 			r.ch <- pubsubMsg
 		}
@@ -81,7 +81,7 @@ func (r *RedisPubSub) Channel() <-chan *PubSubMessage {
 	return r.ch
 }
 
-func (r *RedisPubSub) Publish(channel string, data interface{}) error {
+func (r *RedisPubSub) Publish(channel string, data []byte) error {
 	_, err := r.client.Publish(channel, data).Result()
 	return err
 }

@@ -89,22 +89,22 @@ func (s *OnsiteService) Shutdown() error {
 }
 
 func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
-	err := s.cm.Connect(clientId, ws)
-	if err != nil {
-		log.Errorw("could not connect to client", "clientId", clientId, "error", err)
+	if err := s.cm.Connect(clientId, ws); err != nil {
+		log.Errorw("could not connect to client", "clientId", clientId, "err", err)
 		return err
 	}
 
-	err = s.pubsub.Publish(MembershipChannel, &MembershipMessage{
+	payload, _ := s.codec.Encode(&MembershipMessage{
 		ClientId: clientId,
 		OwnerId:  s.cm.ID,
 	})
-	if err != nil {
+	if err := s.pubsub.Publish(MembershipChannel, payload); err != nil {
 		log.Errorw("could not publish message to pub/sub handler, maybe the connection lost. "+
-			"Refuse to create new WebSocket connection", "clientId", clientId, "error", err)
+			"Refuse to create new WebSocket connection", "clientId", clientId, "err", err)
 		_ = s.DisconnectClient(clientId)
+		return err
 	}
-	return err
+	return nil
 }
 
 func (s *OnsiteService) DisconnectClient(clientId string) error {
@@ -131,12 +131,18 @@ func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 		return ErrEndpointNotFound
 	}
 
-	if err := s.pubsub.Publish(OnsiteChannel, msg); err != nil {
+	payload, err := s.codec.Encode(msg)
+	if err != nil {
 		log.Errorf("could not publish message: %v", err)
 		return err
 	}
 
-	log.Debugw("published message: %v", msg)
+	if err = s.pubsub.Publish(OnsiteChannel, payload); err != nil {
+		log.Errorf("could not publish message: %v", err)
+		return err
+	}
+
+	log.Debugw("published message", "msg", msg)
 	return nil
 }
 
@@ -208,9 +214,10 @@ func (s *OnsiteService) handleWS(req *WSClientRequest) {
 
 func (s *OnsiteService) handlePubSub(msg *PubSubMessage) {
 	if msg.Channel == OnsiteChannel {
-		s.onDeliveryMessage(NewDeliveryMessage(msg))
+		// pub-sub messages are only sent by other servers, so we don't need to care about invalid message format here
+		s.onDeliveryMessage(parseDeliveryMessage(s.codec, msg.Payload))
 	} else if msg.Channel == MembershipChannel {
-		s.onMembershipMessage(NewMembershipMessage(msg))
+		s.onMembershipMessage(parseMembershipMessage(s.codec, msg.Payload))
 	} else {
 		log.Warnw("received message from unsupported pub-sub channel", "channel", msg.Channel)
 	}
@@ -287,14 +294,15 @@ func (s *OnsiteService) handleResendUnAckMessages() {
 }
 
 func (s *OnsiteService) sendMessage(clientId string, msgId string, data interface{}) error {
-	return s.cm.SendMessage(clientId, toWSServerMessage(msgId, data))
-}
-
-func toWSServerMessage(msgId string, data interface{}) *WSServerMessage {
-	return &WSServerMessage{
+	payload, err := s.codec.Encode(&WSServerMessage{
 		ID:   msgId,
 		Data: data,
+	})
+	if err != nil {
+		log.Errorw("could not send message", "clientId", clientId, "err", err)
+		return err
 	}
+	return s.cm.SendMessage(clientId, payload)
 }
 
 func generateId() string {
@@ -335,4 +343,20 @@ func parseAckMessageV1(v interface{}) (*AckMessage, error) {
 	}
 
 	return &AckMessage{ID: id}, nil
+}
+
+func parseDeliveryMessage(codec MessageCodec, data []byte) *DeliveryMessage {
+	var msg DeliveryMessage
+	// pub-sub messages are only sent by other servers,
+	// so we don't need to care about invalid message format here
+	_ = codec.Decode(data, &msg)
+	return &msg
+}
+
+func parseMembershipMessage(codec MessageCodec, data []byte) *MembershipMessage {
+	var msg MembershipMessage
+	// pub-sub messages are only sent by other servers,
+	// so we don't need to care about invalid message format here
+	_ = codec.Decode(data, &msg)
+	return &msg
 }
