@@ -1,7 +1,6 @@
 package cubone
 
 import (
-	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
 )
@@ -36,7 +35,7 @@ func NewServer(cfg Config) (*Server, error) {
 	httpCfg := cfg.HTTPServer
 	server := &http.Server{
 		Handler:      router,
-		Addr:         fmt.Sprintf("%s:%d", httpCfg.Address, httpCfg.Port),
+		Addr:         httpCfg.Addr,
 		WriteTimeout: httpCfg.WriteTimeout,
 		ReadTimeout:  httpCfg.ReadTimeout,
 	}

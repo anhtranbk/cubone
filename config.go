@@ -27,8 +27,7 @@ type GorillaWsConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Address      string
-	Port         uint16
+	Addr         string
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 }
