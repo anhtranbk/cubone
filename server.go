@@ -2,10 +2,8 @@ package cubone
 
 import (
 	"fmt"
-	"net/http"
-	"time"
-
 	"github.com/gorilla/mux"
+	"net/http"
 )
 
 type Server struct {
@@ -39,14 +37,14 @@ func NewServer(cfg Config) (*Server, error) {
 	server := &http.Server{
 		Handler:      router,
 		Addr:         fmt.Sprintf("%s:%d", httpCfg.Address, httpCfg.Port),
-		WriteTimeout: time.Duration(httpCfg.WriteTimeout) * time.Second,
-		ReadTimeout:  time.Duration(httpCfg.ReadTimeout) * time.Second,
+		WriteTimeout: httpCfg.WriteTimeout,
+		ReadTimeout:  httpCfg.ReadTimeout,
 	}
 	return &Server{server: server, onsiteSvc: h.onsiteSvc}, nil
 }
 
 func (s *Server) Serve() error {
-	s.onsiteSvc.Start()
+	_ = s.onsiteSvc.Start()
 	log.Infof("http server started listening at %s", s.server.Addr)
 	return s.server.ListenAndServe()
 }

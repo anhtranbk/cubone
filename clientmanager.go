@@ -71,7 +71,7 @@ func (cm *ClientManager) IsLocalActiveClient(clientId string) bool {
 
 func (cm *ClientManager) IsActiveClient(clientId string) (bool, error) {
 	// In original Python version, we have a bloom filter service
-	// (often served by Redis) to check whether the client is exist
+	// (often served by Redis) to check whether the client is existed
 	// Since bloom filter is a data structure that is possible to return
 	// "false positive" results... TBD.
 	return cm.IsLocalActiveClient(clientId), nil
