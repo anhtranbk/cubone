@@ -89,14 +89,14 @@ func (h *handler) createWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := h.wsConnFactory(w, r)
 	if err != nil {
-		log.Errorw(OpenWsConnectionErr, "error", err)
+		log.Errorw(OpenWsConnectionErr, "err", err)
 		writeErrorResponse(w, http.StatusInternalServerError, OpenWsConnectionErr)
 		return
 	}
 
 	params := mux.Vars(r)
 	clientId := params["client_id"]
-	if err := h.onsiteSvc.ConnectClient(clientId, conn); err != nil {
+	if err = h.onsiteSvc.ConnectClient(clientId, conn); err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, OpenWsConnectionErr)
 	}
 }
@@ -111,7 +111,7 @@ func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 	clientId := params["client_id"]
 	if err := h.onsiteSvc.DisconnectClient(clientId); err != nil {
 		writeErrorResponse(w, http.StatusInternalServerError, CloseWsConnectionErr)
-		log.Errorw(CloseWsConnectionErr, "error", err)
+		log.Errorw(CloseWsConnectionErr, "err", err)
 	}
 }
 
@@ -151,7 +151,7 @@ func handleAuthentication(w http.ResponseWriter, r *http.Request) bool {
 	secret := params["x_client_secret"]
 	ok, err := authenticate(id, secret)
 	if err != nil {
-		log.Errorw(AuthenticateError, "error", err)
+		log.Errorw(AuthenticateError, "err", err)
 		writeErrorResponse(w, http.StatusInternalServerError, AuthenticateError)
 		return false
 	}

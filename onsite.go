@@ -51,7 +51,7 @@ func NewOnsiteService(cfg Config) *OnsiteService {
 	}
 
 	if err != nil {
-		log.Fatalw("could not create Redis from config", "cfg", cfg.Redis, "error", err)
+		log.Fatalw("could not create Redis from config", "cfg", cfg.Redis, "err", err)
 		return nil
 	}
 	if pubsub == nil {

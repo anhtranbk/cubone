@@ -111,7 +111,7 @@ func (cm *ClientManager) run() {
 func (cm *ClientManager) cleanup() {
 	for id, client := range cm.clients {
 		if err := client.close(); err != nil {
-			log.Errorw("clean up client error", "id", id, "error", err)
+			log.Errorw("clean up client error", "id", id, "err", err)
 		}
 	}
 }

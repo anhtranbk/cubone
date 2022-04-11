@@ -81,7 +81,7 @@ func (c *Client) processWrite() {
 	for data := range c.writeCh {
 		if err := c.ws.Send(data); err != nil {
 			// Normally this error occurs when handler are trying to send data to a closed connection.
-			log.Errorw("error while sending message to client", "clientId", c.ID, "error", err.Error())
+			log.Errorw("error while sending message to client", "clientId", c.ID, "err", err)
 			break
 		}
 	}
