@@ -2,11 +2,9 @@ package cubone
 
 import (
 	"encoding/json"
-	"fmt"
+	"github.com/gorilla/mux"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/gorilla/mux"
 )
 
 const htmlTemplate = `
@@ -31,8 +29,9 @@ const htmlTemplate = `
             if (clientId === null || clientId === "") {
                 clientId = Date.now()
             }
+
             document.querySelector("#ws-id").textContent = clientId;
-            var ws = new WebSocket("ws://localhost:%d/ws/register/" + clientId + "/abc/xyz");
+            var ws = new WebSocket("ws://" + location.host + "/ws/register/" + clientId + "/abc/xyz");
 
             const messageOrders = new Map()
             const maxMessagePerOrder = 8
@@ -141,9 +140,9 @@ func (h *handler) trigger(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) demoClient(w http.ResponseWriter, r *http.Request) {
+func (h *handler) demoClient(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Add("Content-Type", "text/html")
-	_, _ = w.Write([]byte(fmt.Sprintf(htmlTemplate, h.cfg.HTTPServer.Port)))
+	_, _ = w.Write([]byte(htmlTemplate))
 }
 
 func handleAuthentication(w http.ResponseWriter, r *http.Request) bool {
