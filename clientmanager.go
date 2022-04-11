@@ -17,7 +17,7 @@ var (
 
 type connectRequest struct {
 	resCh    chan error
-	conn     WSConnection
+	conn     WSConn
 	clientId string
 }
 
@@ -116,7 +116,7 @@ func (cm *ClientManager) cleanup() {
 	}
 }
 
-func (cm *ClientManager) Connect(clientId string, ws WSConnection) error {
+func (cm *ClientManager) Connect(clientId string, ws WSConn) error {
 	req := &connectRequest{
 		resCh:    make(chan error),
 		conn:     ws,
@@ -127,7 +127,7 @@ func (cm *ClientManager) Connect(clientId string, ws WSConnection) error {
 	return waitOrTimeout(req.resCh, cm.cfg.ConnectionTimeout)
 }
 
-func (cm *ClientManager) doConnect(clientId string, ws WSConnection) error {
+func (cm *ClientManager) doConnect(clientId string, ws WSConn) error {
 	if _, found := cm.clients[clientId]; found {
 		log.Errorw("client already existed", "id", clientId)
 		return ErrClientIdDuplicated

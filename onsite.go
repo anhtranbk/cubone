@@ -88,7 +88,7 @@ func (s *OnsiteService) Shutdown() error {
 	return nil
 }
 
-func (s *OnsiteService) ConnectClient(clientId string, ws WSConnection) error {
+func (s *OnsiteService) ConnectClient(clientId string, ws WSConn) error {
 	if err := s.cm.Connect(clientId, ws); err != nil {
 		log.Errorw("could not connect to client", "clientId", clientId, "err", err)
 		return err

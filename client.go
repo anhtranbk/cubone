@@ -22,7 +22,7 @@ const (
 
 type Client struct {
 	ID      string
-	ws      WSConnection
+	ws      WSConn
 	writeCh chan []byte
 	readCh  chan<- *WSClientRequest
 	stateCh chan<- stateChange
@@ -30,7 +30,7 @@ type Client struct {
 	closed  *atomic.Bool
 }
 
-func NewClient(id string, ws WSConnection, rCh chan<- *WSClientRequest, sCh chan<- stateChange) *Client {
+func NewClient(id string, ws WSConn, rCh chan<- *WSClientRequest, sCh chan<- stateChange) *Client {
 	return &Client{
 		ID:      id,
 		ws:      ws,
