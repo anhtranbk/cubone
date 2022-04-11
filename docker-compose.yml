@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  app:
+    image: cubone-ws
+    build:
+      dockerfile: Dockerfile
+      context: .
+    environment:
+      REDIS_ADDRESS: redis:6379
+    depends_on:
+      - redis
+    ports:
+      - '11888:11888'
+    command: ["bash", "-c", "./entrypoint.sh"]
+  redis:
+    image: redis:6-alpine
+    ports:
+      - '6379:6379'
