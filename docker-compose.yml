@@ -7,12 +7,12 @@ services:
       dockerfile: Dockerfile
       context: .
     environment:
-      REDIS_ADDRESS: redis:6379
+      REDIS_ADDRESS: "redis:6379"
+      ADDR: "0.0.0.0:11888"
     depends_on:
       - redis
     ports:
       - '11888:11888'
-    command: ["bash", "-c", "./entrypoint.sh"]
   redis:
     image: redis:6-alpine
     ports:
