@@ -147,13 +147,14 @@ func (s *OnsiteService) PublishMessage(msg *DeliveryMessage) error {
 }
 
 func (s *OnsiteService) run() {
+	ticker := time.NewTicker(s.cfg.MessageRetryInterval)
 	defer func(s *OnsiteService) {
 		_ = s.Shutdown()
+		ticker.Stop()
 	}(s)
 
 	wsCh := s.cm.MessageChannel()
 	psCh := s.pubsub.Channel()
-	ticker := time.NewTicker(s.cfg.MessageRetryInterval)
 
 	for {
 		select {
