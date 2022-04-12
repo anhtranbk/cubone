@@ -20,10 +20,11 @@ type Config struct {
 }
 
 type GorillaWsConfig struct {
-	ReadBufferSize  int
-	WriteBufferSize int
-	ReadTimeout     time.Duration
-	WriteTimeout    time.Duration
+	ReadBufferSize   int
+	WriteBufferSize  int
+	HandshakeTimeout time.Duration
+	ReadTimeout      time.Duration
+	WriteTimeout     time.Duration
 }
 
 type HTTPServerConfig struct {

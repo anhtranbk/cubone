@@ -15,10 +15,11 @@ func main() {
 		ConnectionTimeout:    time.Second * 5,
 		RedisAddr:            os.Getenv("REDIS_ADDRESS"),
 		GorillaWS: &cubone.GorillaWsConfig{
-			ReadBufferSize:  8192,
-			WriteBufferSize: 8192,
-			ReadTimeout:     time.Second * 10,
-			WriteTimeout:    time.Second * 10,
+			ReadBufferSize:   8192,
+			WriteBufferSize:  8192,
+			HandshakeTimeout: time.Second * 5,
+			ReadTimeout:      time.Second * 10,
+			WriteTimeout:     time.Second * 10,
 		},
 		HTTPServer: &cubone.HTTPServerConfig{
 			Addr:         os.Getenv("ADDR"),

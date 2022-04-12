@@ -16,7 +16,7 @@ type GorillaWSConn struct {
 
 func NewGorillaWSConnFactory(cfg *GorillaWsConfig) WSConnFactory {
 	u := &websocket.Upgrader{
-		HandshakeTimeout:  0,
+		HandshakeTimeout:  cfg.HandshakeTimeout,
 		ReadBufferSize:    cfg.ReadBufferSize,
 		WriteBufferSize:   cfg.WriteBufferSize,
 		WriteBufferPool:   nil,
