@@ -75,6 +75,11 @@ func (c *Client) close() error {
 	return nil
 }
 
+// processWrite pumps messages from the writeCh to the websocket connection.
+//
+// A goroutine running processWrite is started for each connection. The
+// application ensures that there is at most one writer to a connection by
+// executing all writes from this goroutine.
 //goland:noinspection GoUnhandledErrorResult
 func (c *Client) processWrite() {
 	defer c.close()
@@ -87,6 +92,11 @@ func (c *Client) processWrite() {
 	}
 }
 
+// processRead read messages from the websocket connection to readCh channel
+//
+// The application runs processRead in a per-connection goroutine. The application
+// ensures that there is at most one reader on a connection by executing all
+// reads from this goroutine.
 //goland:noinspection GoUnhandledErrorResult
 func (c *Client) processRead() {
 	defer c.close()
