@@ -8,6 +8,14 @@ import (
 	"github.com/anhtranbk/cubone"
 )
 
+func getAddrOrDefault() string {
+	addr := os.Getenv("ADDR")
+	if addr == "" {
+		addr = "localhost:18888"
+	}
+	return addr
+}
+
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
 		MessageRetryTimeout:  time.Second * 60,
@@ -22,7 +30,7 @@ func main() {
 			WriteTimeout:     time.Second * 10,
 		},
 		HTTPServer: &cubone.HTTPServerConfig{
-			Addr:         os.Getenv("ADDR"),
+			Addr:         getAddrOrDefault(),
 			ReadTimeout:  time.Second * 5,
 			WriteTimeout: time.Second * 5,
 		},
