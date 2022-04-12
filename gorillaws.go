@@ -4,16 +4,18 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
 
 type GorillaWSConn struct {
 	conn *websocket.Conn
+	cfg  *GorillaWsConfig
 }
 
 func NewGorillaWSConnFactory(cfg *GorillaWsConfig) WSConnFactory {
-	upgrader := &websocket.Upgrader{
+	u := &websocket.Upgrader{
 		HandshakeTimeout:  0,
 		ReadBufferSize:    cfg.ReadBufferSize,
 		WriteBufferSize:   cfg.WriteBufferSize,
@@ -24,39 +26,34 @@ func NewGorillaWSConnFactory(cfg *GorillaWsConfig) WSConnFactory {
 		EnableCompression: false,
 	}
 
-	return WSConnFactory(func(w http.ResponseWriter, r *http.Request) (WSConn, error) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+	return func(w http.ResponseWriter, r *http.Request) (WSConn, error) {
+		conn, err := u.Upgrade(w, r, nil)
 		if err != nil {
 			return nil, err
 		}
-		return &GorillaWSConn{conn: conn}, nil
-	})
+		return &GorillaWSConn{conn: conn, cfg: cfg}, nil
+	}
+}
+
+func (c *GorillaWSConn) Ping() error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(c.cfg.WriteTimeout))
+	return c.conn.WriteMessage(websocket.PingMessage, nil)
 }
 
 func (c *GorillaWSConn) Close() error {
 	return c.conn.Close()
 }
 
-func (c *GorillaWSConn) SendText(data string) error {
-	return c.conn.WriteMessage(websocket.TextMessage, []byte(data))
-}
-
 func (c *GorillaWSConn) Send(data []byte) error {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(c.cfg.WriteTimeout))
 	return c.conn.WriteMessage(websocket.TextMessage, data)
 }
 
-func (c *GorillaWSConn) ReceiveText() (string, error) {
-	messageType, data, err := c.conn.ReadMessage()
-	if messageType != websocket.TextMessage {
-		return "", errors.New("unsupported message type " + strconv.Itoa(messageType))
-	}
-	return string(data), err
-}
-
 func (c *GorillaWSConn) Receive() ([]byte, error) {
-	messageType, data, err := c.conn.ReadMessage()
-	if messageType != websocket.BinaryMessage {
-		return nil, errors.New("unsupported message type " + strconv.Itoa(messageType))
+	_ = c.conn.SetReadDeadline(time.Now().Add(c.cfg.WriteTimeout))
+	msgType, data, err := c.conn.ReadMessage()
+	if msgType != websocket.BinaryMessage {
+		return nil, errors.New("unsupported message type " + strconv.Itoa(msgType))
 	}
 	return data, err
 }

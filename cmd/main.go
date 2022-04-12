@@ -17,6 +17,8 @@ func main() {
 		GorillaWS: &cubone.GorillaWsConfig{
 			ReadBufferSize:  8192,
 			WriteBufferSize: 8192,
+			ReadTimeout:     time.Second * 10,
+			WriteTimeout:    time.Second * 10,
 		},
 		HTTPServer: &cubone.HTTPServerConfig{
 			Addr:         os.Getenv("ADDR"),
