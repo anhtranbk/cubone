@@ -2,7 +2,7 @@ version: '3'
 
 services:
   app:
-    image: cubone-ws
+    image: cubone
     build:
       dockerfile: Dockerfile
       context: .
