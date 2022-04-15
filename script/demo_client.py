@@ -9,7 +9,7 @@ import time
 def send_request(worker_id, num_requests, endpoint):
     for i in range(num_requests):
         resp = requests.post(
-            url='http://localhost:11888/prile/ws/internal/onsite/trigger',
+            url='http://localhost:11888/ws/internal/onsite/trigger',
             json={
                 'endpoint': endpoint,
                 'data': f'{datetime.now().isoformat()} Sent by {worker_id}, message order {i}'
