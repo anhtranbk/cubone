@@ -11,7 +11,7 @@ import (
 func getAddrOrDefault() string {
 	addr := os.Getenv("ADDR")
 	if addr == "" {
-		addr = "localhost:18888"
+		addr = "localhost:11888"
 	}
 	return addr
 }
