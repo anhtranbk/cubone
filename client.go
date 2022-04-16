@@ -1,8 +1,9 @@
 package cubone
 
 import (
-	"go.uber.org/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 )
 
 type clientState int8
@@ -23,7 +24,7 @@ const (
 
 type Client struct {
 	ID      string
-	ws      WSConn
+	conn    WSConn
 	writeCh chan []byte
 	readCh  chan<- *WSClientRequest
 	stateCh chan<- stateChange
@@ -31,10 +32,10 @@ type Client struct {
 	closed  *atomic.Bool
 }
 
-func NewClient(id string, ws WSConn, rCh chan<- *WSClientRequest, sCh chan<- stateChange) *Client {
+func NewClient(id string, conn WSConn, rCh chan<- *WSClientRequest, sCh chan<- stateChange) *Client {
 	return &Client{
 		ID:      id,
-		ws:      ws,
+		conn:    conn,
 		writeCh: make(chan []byte, 128),
 		readCh:  rCh,
 		stateCh: sCh,
@@ -71,7 +72,7 @@ func (c *Client) close() error {
 			state:    Disconnected,
 		}
 		// close underlying websocket connection
-		return c.ws.Close()
+		return c.conn.Close()
 	}
 	return nil
 }
@@ -81,7 +82,8 @@ func (c *Client) close() error {
 // A goroutine running processWrite is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-// Every second, we send a ping message to keep up with alive clients
+//
+// Besides that, we also send a ping message every second to keep up with alive clients
 func (c *Client) processWrite() {
 	ticker := time.NewTicker(time.Second)
 	defer func() {
@@ -96,13 +98,13 @@ func (c *Client) processWrite() {
 				// channel was closed
 				return
 			}
-			if err := c.ws.Send(data); err != nil {
+			if err := c.conn.Send(data); err != nil {
 				// Normally this error occurs when handler are trying to send data to a closed connection.
 				log.Errorw("error while sending message to client", "id", c.ID, "err", err)
 				return
 			}
 		case <-ticker.C:
-			if err := c.ws.Ping(); err != nil {
+			if err := c.conn.Ping(); err != nil {
 				log.Errorw("ping to client failed", "id", c.ID, "err", err)
 				return
 			}
@@ -123,7 +125,7 @@ func (c *Client) processRead() {
 		case <-c.done:
 			return
 		default:
-			b, err := c.ws.Receive()
+			b, err := c.conn.Receive()
 			if err != nil {
 				log.Errorf("reading from ws error: %v", err)
 				return

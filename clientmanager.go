@@ -116,10 +116,10 @@ func (cm *ClientManager) cleanup() {
 	}
 }
 
-func (cm *ClientManager) Connect(clientId string, ws WSConn) error {
+func (cm *ClientManager) Connect(clientId string, conn WSConn) error {
 	req := &connectRequest{
 		resCh:    make(chan error),
-		conn:     ws,
+		conn:     conn,
 		clientId: clientId,
 	}
 	cm.connectCh <- req
@@ -127,13 +127,13 @@ func (cm *ClientManager) Connect(clientId string, ws WSConn) error {
 	return waitOrTimeout(req.resCh, cm.cfg.ConnectionTimeout)
 }
 
-func (cm *ClientManager) doConnect(clientId string, ws WSConn) error {
+func (cm *ClientManager) doConnect(clientId string, conn WSConn) error {
 	if _, found := cm.clients[clientId]; found {
 		log.Errorw("client already existed", "id", clientId)
 		return ErrClientIdDuplicated
 	}
 
-	client := NewClient(clientId, ws, cm.clientMsgCh, cm.stateChangeCh)
+	client := NewClient(clientId, conn, cm.clientMsgCh, cm.stateChangeCh)
 	cm.clients[clientId] = client
 	cm.totalClients.Inc()
 	log.Infow("client connected", "id", clientId)
