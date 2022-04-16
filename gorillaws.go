@@ -31,6 +31,12 @@ func NewGorillaWSConnFactory(cfg *GorillaWsConfig) WSConnFactory {
 		if err != nil {
 			return nil, err
 		}
+		if err = conn.SetReadDeadline(time.Now().Add(cfg.ReadTimeout)); err != nil {
+			return nil, err
+		}
+		conn.SetPongHandler(func(string) error {
+			return conn.SetReadDeadline(time.Now().Add(cfg.ReadTimeout))
+		})
 		return &GorillaWSConn{conn: conn, cfg: cfg}, nil
 	}
 }
@@ -50,9 +56,8 @@ func (c *GorillaWSConn) Send(data []byte) error {
 }
 
 func (c *GorillaWSConn) Receive() ([]byte, error) {
-	_ = c.conn.SetReadDeadline(time.Now().Add(c.cfg.WriteTimeout))
 	msgType, data, err := c.conn.ReadMessage()
-	if msgType != websocket.BinaryMessage {
+	if msgType != websocket.TextMessage {
 		return nil, errors.New("unsupported message type " + strconv.Itoa(msgType))
 	}
 	return data, err

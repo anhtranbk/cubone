@@ -2,6 +2,7 @@ package cubone
 
 import (
 	"go.uber.org/atomic"
+	"time"
 )
 
 type clientState int8
@@ -80,14 +81,31 @@ func (c *Client) close() error {
 // A goroutine running processWrite is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-//goland:noinspection GoUnhandledErrorResult
+// Every second, we send a ping message to keep up with alive clients
 func (c *Client) processWrite() {
-	defer c.close()
-	for data := range c.writeCh {
-		if err := c.ws.Send(data); err != nil {
-			// Normally this error occurs when handler are trying to send data to a closed connection.
-			log.Errorw("error while sending message to client", "clientId", c.ID, "err", err)
-			break
+	ticker := time.NewTicker(time.Second)
+	defer func() {
+		_ = c.close()
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case data, more := <-c.writeCh:
+			if !more {
+				// channel was closed
+				return
+			}
+			if err := c.ws.Send(data); err != nil {
+				// Normally this error occurs when handler are trying to send data to a closed connection.
+				log.Errorw("error while sending message to client", "id", c.ID, "err", err)
+				return
+			}
+		case <-ticker.C:
+			if err := c.ws.Ping(); err != nil {
+				log.Errorw("ping to client failed", "id", c.ID, "err", err)
+				return
+			}
 		}
 	}
 }
