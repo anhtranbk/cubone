@@ -251,7 +251,7 @@ func (s *OnsiteService) onMembershipMessage(msg *MembershipMessage) {
 	// Mean that this is not server where client active, we should remove (if present) outdated connection
 	log.Debugw("received membership message", "ownerId", msg.OwnerId, "clientId", msg.ClientId)
 	if s.cm.IsLocalActiveClient(msg.ClientId) {
-		log.Debugw("removing outdated client",
+		log.Infow("removing outdated client",
 			"clientId", msg.ClientId,
 			"newOwner", msg.OwnerId,
 			"oldOwner", s.cm.ID)
@@ -326,10 +326,11 @@ func parseAckMessage(wsMsg *WSClientMessage) (*AckMessage, error) {
 		ackMsg = wsMsg.Ack
 	} else if wsMsg.Data != nil {
 		// parse message from older clients
-		ackMsg, err = parseAckMessageV1(&wsMsg.Data)
+		ackMsg, err = parseAckMessageV1(wsMsg.Data)
 	} else {
 		err = errInvalidPayload
 	}
+	log.Debugw("parse ack message from ws message", "wsMsg", wsMsg)
 
 	return ackMsg, err
 }
