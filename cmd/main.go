@@ -18,7 +18,7 @@ func getAddrOrDefault() string {
 
 func main() {
 	server, err := cubone.NewServer(cubone.Config{
-		MessageRetryTimeout:  time.Second * 60,
+		MessageRetryTimeout:  time.Second * 30,
 		MessageRetryInterval: time.Second * 2,
 		ConnectionTimeout:    time.Second * 5,
 		RedisAddr:            os.Getenv("REDIS_ADDRESS"),
