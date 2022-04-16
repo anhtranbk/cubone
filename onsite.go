@@ -76,6 +76,11 @@ func (s *OnsiteService) Start() error {
 		return ErrServerInternal
 	}
 
+	if err := s.pubsub.Subscribe(MembershipChannel, OnsiteChannel); err != nil {
+		log.Errorf("could not subscribe to pubsub channels: %v", err)
+		return ErrServerInternal
+	}
+
 	go s.run()
 	log.Info("onsite service started")
 	return nil
@@ -225,6 +230,7 @@ func (s *OnsiteService) handlePubSub(msg *PubSubMessage) {
 }
 
 func (s *OnsiteService) onDeliveryMessage(msg *DeliveryMessage) {
+	log.Debugw("received delivery message", "endpoint", msg.Endpoint)
 	msgId := generateId()
 	if err := s.sendMessage(msg.Endpoint, msgId, msg.Data); err != nil {
 		log.Errorw("error occurred while handling delivery message", "msg", msg)
@@ -243,6 +249,7 @@ func (s *OnsiteService) onMembershipMessage(msg *MembershipMessage) {
 		return
 	}
 	// Mean that this is not server where client active, we should remove (if present) outdated connection
+	log.Debugw("received membership message", "ownerId", msg.OwnerId, "clientId", msg.ClientId)
 	if s.cm.IsLocalActiveClient(msg.ClientId) {
 		log.Debugw("removing outdated client",
 			"clientId", msg.ClientId,
@@ -276,7 +283,7 @@ func (s *OnsiteService) handleResendUnAckMessages() {
 		} else if !s.cm.IsLocalActiveClient(msg.clientId) {
 			// could not send message to target client due to client was disconnected
 			// we will not discard the message here and try to deliver message at next run
-			log.Debug("could not send un-ack message to a disconnect client", "clientId", msg.clientId)
+			log.Debugw("could not send un-ack message to a disconnect client", "clientId", msg.clientId)
 		} else {
 			log.Debugw("re-sending un-ack message to client", "msgId", id, "clientId", msg.clientId)
 			if err := s.sendMessage(msg.clientId, id, msg.data); err != nil {
