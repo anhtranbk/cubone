@@ -240,7 +240,7 @@ func (s *OnsiteService) onDeliveryMessage(msg *DeliveryMessage) {
 	s.unAckMessages[msgId] = &unAckMessage{
 		data:      msg.Data,
 		clientId:  msg.Endpoint,
-		createdAt: time.Now().Add(s.cfg.MessageRetryTimeout),
+		createdAt: time.Now(),
 	}
 }
 
@@ -285,7 +285,7 @@ func (s *OnsiteService) handleResendUnAckMessages() {
 			// we will not discard the message here and try to deliver message at next run
 			log.Debugw("could not send un-ack message to a disconnect client", "clientId", msg.clientId)
 		} else {
-			log.Debugw("re-sending un-ack message to client", "msgId", id, "clientId", msg.clientId)
+			log.Debugw("resend un-ack message to client", "msgId", id, "clientId", msg.clientId)
 			if err := s.sendMessage(msg.clientId, id, msg.data); err != nil {
 				log.Errorf("error while sending un-ack message to client: %v", err)
 			}
@@ -294,9 +294,9 @@ func (s *OnsiteService) handleResendUnAckMessages() {
 
 	for _, id := range s.buf {
 		delete(s.unAckMessages, id)
-		log.Infow("un-ack message removed due to exceeded timeout", "id", id)
+		log.Debugw("un-ack message removed due to exceeded timeout", "id", id)
 	}
-	log.Infof("%d un-ack messages were removed", len(s.buf))
+	log.Infow("un-ack messages report", "total", len(s.unAckMessages), "removed", len(s.buf))
 	// clear buffer
 	s.buf = s.buf[:0]
 }
