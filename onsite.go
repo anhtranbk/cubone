@@ -65,7 +65,7 @@ func NewOnsiteService(cfg Config) *OnsiteService {
 		pubsub:        pubsub,
 		doneCh:        make(chan struct{}, 1),
 		unAckMessages: make(map[string]*unAckMessage),
-		buf:           make([]string, 8192),
+		buf:           make([]string, 0, 1024),
 		codec:         NewDefaultCodec(),
 	}
 }
