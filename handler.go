@@ -3,7 +3,6 @@ package cubone
 import (
 	"encoding/json"
 	"github.com/gorilla/mux"
-	"io/ioutil"
 	"net/http"
 )
 
@@ -117,19 +116,13 @@ func (h *handler) removeWebSocket(w http.ResponseWriter, r *http.Request) {
 
 // /internal/onsite/trigger
 func (h *handler) trigger(w http.ResponseWriter, r *http.Request) {
-	reader, err := r.GetBody()
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, "could not read trigger request")
-		return
-	}
-	buffer, err := ioutil.ReadAll(reader)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, "could not read trigger request")
+	if r.Method != http.MethodPost {
+		writeErrorResponse(w, http.StatusMethodNotAllowed, "")
 		return
 	}
 
 	var msg DeliveryMessage
-	if err := json.Unmarshal(buffer, &msg); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, "could not parse trigger request")
 		return
 	}
