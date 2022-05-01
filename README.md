@@ -1,3 +1,7 @@
+## Overall Architecture
+
+![architecture](cubone.excalidraw.png)
+
 ## How to use
 
 Run server in dev mode:
